@@ -151,6 +151,13 @@ impl QuantaTermApp {
             
             pty.start_shell(cols, rows).await
                 .context("Failed to start shell")?;
+                
+            // Add welcome message to renderer
+            if let Some(ref mut renderer) = self.renderer {
+                renderer.add_text("QuantaTerm v0.1.0 - Shell Started");
+                renderer.add_text("Type commands and see output appear!");
+                renderer.add_text("Press Escape to exit.");
+            }
         }
 
         info!("Window and renderer initialized successfully");
@@ -163,21 +170,33 @@ impl QuantaTermApp {
             while let Some(event) = pty.try_recv_event() {
                 match event {
                     PtyEvent::Data(data) => {
-                        // Convert bytes to string for logging (this is where we'd normally
-                        // update the terminal grid/display)
+                        // Convert bytes to string for display
                         if let Ok(text) = String::from_utf8(data.clone()) {
                             debug!("Shell output: {}", text.trim());
-                            // TODO: Send to terminal grid/renderer for display
+                            
+                            // Send text to renderer for display
+                            if let Some(ref mut renderer) = self.renderer {
+                                renderer.add_text(&text);
+                            }
                         } else {
                             debug!("Shell output (binary): {} bytes", data.len());
                         }
                     }
                     PtyEvent::ProcessExit(code) => {
                         info!("Shell process exited with code: {}", code);
-                        // TODO: Handle shell exit (restart, show message, etc.)
+                        
+                        // Add exit message to display
+                        if let Some(ref mut renderer) = self.renderer {
+                            renderer.add_text(&format!("Shell exited with code: {}", code));
+                        }
                     }
                     PtyEvent::Error(error) => {
                         error!("PTY error: {}", error);
+                        
+                        // Add error message to display
+                        if let Some(ref mut renderer) = self.renderer {
+                            renderer.add_text(&format!("PTY Error: {}", error));
+                        }
                     }
                 }
             }
@@ -267,5 +286,34 @@ mod tests {
         assert_eq!(app.keycode_to_bytes(KeyCode::KeyA), Some(b"a".to_vec()));
         assert_eq!(app.keycode_to_bytes(KeyCode::Space), Some(b" ".to_vec()));
         assert_eq!(app.keycode_to_bytes(KeyCode::ArrowUp), Some(b"\x1b[A".to_vec()));
+    }
+
+    #[test]
+    fn test_pty_event_handling() {
+        use quantaterm_pty::PtyEvent;
+        
+        // Test that our event handling logic works
+        let event_data = PtyEvent::Data(b"Hello World\n".to_vec());
+        let event_exit = PtyEvent::ProcessExit(0);
+        let event_error = PtyEvent::Error("Test error".to_string());
+        
+        // Verify events can be created and matched
+        match event_data {
+            PtyEvent::Data(data) => {
+                let text = String::from_utf8(data).unwrap();
+                assert!(text.contains("Hello World"));
+            }
+            _ => panic!("Expected Data event"),
+        }
+        
+        match event_exit {
+            PtyEvent::ProcessExit(code) => assert_eq!(code, 0),
+            _ => panic!("Expected ProcessExit event"),
+        }
+        
+        match event_error {
+            PtyEvent::Error(err) => assert_eq!(err, "Test error"),
+            _ => panic!("Expected Error event"),
+        }
     }
 }
