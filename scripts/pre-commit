@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# Pre-commit hook for QuantaTerm
+# Runs formatting, linting, and license checks
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Check if this is an initial commit
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+    against=HEAD
+else
+    # Initial commit: diff against an empty tree object
+    against=$(git hash-object -t tree /dev/null)
+fi
+
+# Redirect output to stderr
+exec 1>&2
+
+# Check for whitespace errors
+echo "📝 Checking for whitespace errors..."
+git diff-index --check --cached $against -- || {
+    echo "❌ Whitespace errors found. Please fix them and try again."
+    exit 1
+}
+
+# Check Rust formatting
+echo "🎨 Checking Rust formatting..."
+if ! cargo fmt --all -- --check; then
+    echo "❌ Code is not properly formatted. Run 'cargo fmt --all' to fix."
+    exit 1
+fi
+
+# Run Clippy
+echo "📎 Running Clippy..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo "❌ Clippy found issues. Please fix them and try again."
+    exit 1
+fi
+
+# Check for license headers (basic check)
+echo "📄 Checking for license headers..."
+rust_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(rs)$' || true)
+
+if [ -n "$rust_files" ]; then
+    for file in $rust_files; do
+        if [ -f "$file" ] && ! head -10 "$file" | grep -q "Copyright\|License\|//!"; then
+            echo "⚠️  Warning: $file might be missing license header or documentation"
+        fi
+    done
+fi
+
+# Check Cargo.toml files
+echo "📦 Checking Cargo.toml files..."
+toml_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E 'Cargo\.toml$' || true)
+
+if [ -n "$toml_files" ]; then
+    echo "📋 Validating Cargo.toml syntax..."
+    for file in $toml_files; do
+        if [ -f "$file" ]; then
+            # Basic syntax check using cargo check
+            if ! cargo check --manifest-path "$file" --quiet 2>/dev/null; then
+                echo "❌ Invalid Cargo.toml syntax in $file"
+                exit 1
+            fi
+        fi
+    done
+fi
+
+# Run basic tests on staged files
+echo "🧪 Running basic tests..."
+if ! cargo test --all --quiet; then
+    echo "❌ Tests failed. Please fix them and try again."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0

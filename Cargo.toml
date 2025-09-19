@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/renderer", 
+    "crates/pty",
+    "crates/blocks",
+    "crates/config",
+    "crates/plugins-api",
+    "crates/plugins-host",
+    "crates/ai",
+    "crates/telemetry",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+authors = ["Zec Fingerhut"]
+repository = "https://github.com/merenut/QuantaTerm"
+readme = "README.md"
+
+[workspace.dependencies]
+# Common dependencies will be defined here
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+anyhow = "1.0"
+
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true
+
+[profile.bench]
+inherits = "release"
+debug = true
