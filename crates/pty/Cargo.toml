@@ -12,3 +12,5 @@ quantaterm-core = { path = "../core" }
 thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+tokio.workspace = true
+portable-pty = "0.8"
