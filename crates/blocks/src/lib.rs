@@ -2315,4 +2315,96 @@ mod tests {
         grid.handle_csi_action(&CsiAction::CursorPosition(10, 15)); // Beyond grid bounds
         assert_eq!(grid.cursor_position(), (9, 4)); // Should be clamped
     }
+
+    #[test]
+    fn test_complete_selection_workflow() {
+        use quantaterm_core::CsiAction;
+        
+        // This test demonstrates the complete workflow of cursor movement, 
+        // text selection, and clipboard integration
+        let mut grid = TerminalGrid::new(15, 4);
+
+        println!("\n=== QuantaTerm Selection Workflow Demo ===");
+
+        // Add sample content
+        let content = [
+            "Hello World!",
+            "Line two here", 
+            "Final content",
+            "End of buffer"
+        ];
+
+        for (row, text) in content.iter().enumerate() {
+            for (col, ch) in text.chars().enumerate() {
+                grid.set_cell(col as u16, row as u16, Cell::new(ch as u32));
+            }
+        }
+
+        println!("1. Created grid with sample content:");
+        let lines = grid.get_viewport_text();
+        for (i, line) in lines.iter().enumerate() {
+            println!("   Row {}: '{}'", i, line.trim_end());
+        }
+
+        // Test cursor movement via CSI
+        println!("\n2. Testing cursor movement:");
+        grid.set_cursor_position(0, 0);
+        println!("   Initial cursor: {:?}", grid.cursor_position());
+
+        grid.handle_csi_action(&CsiAction::CursorDown(1));
+        grid.handle_csi_action(&CsiAction::CursorForward(5));
+        println!("   After moving down 1, right 5: {:?}", grid.cursor_position());
+
+        // Test word selection
+        println!("\n3. Testing word selection:");
+        grid.select_word_at(Position::new(6, 0)); // Select "World"
+        if let Some(selected) = grid.get_selected_text() {
+            println!("   Selected word: '{}'", selected);
+            assert_eq!(selected, "World");
+        }
+
+        // Test multi-line selection
+        println!("\n4. Testing multi-line selection:");
+        grid.start_selection(Position::new(5, 1)); // Start at "two"
+        grid.extend_selection(Position::new(5, 2)); // End at "content"
+
+        if let Some(selected) = grid.get_selected_text() {
+            println!("   Multi-line selection: '{}'", selected.replace('\n', "\\n"));
+            assert!(selected.contains("two"));
+            assert!(selected.contains("Final"));
+        }
+
+        // Test selection properties
+        println!("\n5. Testing selection properties:");
+        if let Some(selection) = grid.get_selection() {
+            println!("   Selection bounds: {:?} to {:?}", selection.start, selection.end);
+            println!("   Is multiline: {}", selection.is_multiline());
+            assert!(selection.is_multiline());
+        }
+
+        // Test clipboard integration
+        println!("\n6. Testing clipboard integration:");
+        match grid.copy_selection_to_clipboard() {
+            Ok(()) => println!("   ✓ Successfully copied to clipboard!"),
+            Err(e) => println!("   ⚠ Clipboard copy failed (expected in CI): {}", e),
+        }
+
+        // Test selection clearing
+        println!("\n7. Testing selection management:");
+        assert!(grid.has_selection());
+        grid.clear_selection();
+        assert!(!grid.has_selection());
+        println!("   ✓ Selection cleared successfully");
+
+        // Test select all
+        grid.select_all();
+        assert!(grid.has_selection());
+        if let Some(selected) = grid.get_selected_text() {
+            println!("   Select all captured {} characters", selected.len());
+            assert!(selected.contains("Hello"));
+            assert!(selected.contains("End of buffer"));
+        }
+
+        println!("\n✨ Complete workflow test passed!");
+    }
 }
