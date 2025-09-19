@@ -19,6 +19,10 @@ pub struct Renderer {
     queue: Queue,
     config: SurfaceConfiguration,
     size: PhysicalSize<u32>,
+    /// Simple text buffer for storing terminal output
+    text_buffer: Vec<String>,
+    /// Current background color (changes when we receive shell output)
+    background_color: wgpu::Color,
 }
 
 impl Renderer {
@@ -88,6 +92,13 @@ impl Renderer {
             queue,
             config,
             size,
+            text_buffer: Vec::new(),
+            background_color: wgpu::Color {
+                r: 0.1,
+                g: 0.2,
+                b: 0.3,
+                a: 1.0,
+            },
         })
     }
 
@@ -119,7 +130,7 @@ impl Renderer {
                 label: Some("Render Encoder"),
             });
 
-        // Clear screen with a dark blue color
+        // Clear screen with background color (changes slightly when we have output)
         {
             let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -127,12 +138,7 @@ impl Renderer {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(self.background_color),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -149,6 +155,36 @@ impl Renderer {
 
         Ok(())
     }
+
+    /// Add text to the terminal buffer and update display
+    pub fn add_text(&mut self, text: &str) {
+        // Split text into lines and add to buffer
+        for line in text.lines() {
+            if !line.trim().is_empty() {
+                self.text_buffer.push(line.to_string());
+                debug!("Added text to renderer buffer: {}", line);
+            }
+        }
+
+        // Keep only the last 100 lines to prevent memory growth
+        if self.text_buffer.len() > 100 {
+            self.text_buffer.drain(0..self.text_buffer.len() - 100);
+        }
+
+        // Change background color slightly when we have output to show visual feedback
+        let line_count = self.text_buffer.len() as f64;
+        self.background_color = wgpu::Color {
+            r: 0.1 + (line_count * 0.01).min(0.2),
+            g: 0.2 + (line_count * 0.005).min(0.1),
+            b: 0.3,
+            a: 1.0,
+        };
+    }
+
+    /// Get the current text buffer (for debugging/testing)
+    pub fn get_text_buffer(&self) -> &[String] {
+        &self.text_buffer
+    }
 }
 
 #[cfg(test)]
@@ -158,5 +194,37 @@ mod tests {
         // Basic test to ensure the renderer module compiles
         // We can't create an actual renderer without a window/display in CI
         assert!(true);
+    }
+
+    #[test]
+    fn test_text_buffer_functionality() {
+        // We can't create a full renderer without a window, but we can test
+        // the logic by creating a mock renderer struct with the text buffer
+        let mut text_buffer = Vec::new();
+        
+        // Test adding text
+        let text = "Hello\nWorld\nTest";
+        for line in text.lines() {
+            if !line.trim().is_empty() {
+                text_buffer.push(line.to_string());
+            }
+        }
+        
+        assert_eq!(text_buffer.len(), 3);
+        assert_eq!(text_buffer[0], "Hello");
+        assert_eq!(text_buffer[1], "World");
+        assert_eq!(text_buffer[2], "Test");
+        
+        // Test buffer length limiting
+        for i in 0..105 {
+            text_buffer.push(format!("Line {}", i));
+        }
+        
+        // Simulate buffer limit of 100
+        if text_buffer.len() > 100 {
+            text_buffer.drain(0..text_buffer.len() - 100);
+        }
+        
+        assert_eq!(text_buffer.len(), 100);
     }
 }

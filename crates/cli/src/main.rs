@@ -10,7 +10,8 @@ mod app;
 
 use app::QuantaTermApp;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
@@ -21,7 +22,7 @@ fn main() -> Result<()> {
     event_loop.set_control_flow(ControlFlow::Wait);
 
     // Create and run application
-    let mut app = QuantaTermApp::new();
+    let mut app = QuantaTermApp::new().await?;
     event_loop
         .run_app(&mut app)
         .context("Failed to run application")?;
