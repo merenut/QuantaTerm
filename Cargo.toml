@@ -31,6 +31,13 @@ serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 anyhow = "1.0"
 
+# Window and GPU dependencies
+winit = "0.30"
+wgpu = "26.0"
+
+# Async runtime for window events
+pollster = "0.3"
+
 [profile.dev]
 opt-level = 0
 debug = true

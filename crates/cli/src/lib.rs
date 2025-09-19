@@ -20,3 +20,20 @@ impl Default for Cli {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_creation() {
+        let _cli = Cli::new();
+        assert!(true); // Basic test that CLI can be created
+    }
+
+    #[test]
+    fn test_cli_default() {
+        let _cli = Cli::default();
+        assert!(true); // Basic test that CLI default works
+    }
+}
