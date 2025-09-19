@@ -22,7 +22,15 @@ QuantaTerm is currently in **Phase 0** of development - establishing the foundat
 ### Current Phase 0 Progress
 - [x] Repository structure and Cargo workspace
 - [x] Initial crate scaffolding
-- [ ] CI pipeline setup
+- [x] CI pipeline setup (Makefile with lint/test/build)
+- [x] **Window and Input Event Implementation** ✨
+  - [x] Integrate winit for cross-platform windowing
+  - [x] Initialize wgpu for GPU context creation
+  - [x] Basic window creation (800x600, titled "QuantaTerm")
+  - [x] Event loop handling window events
+  - [x] Keyboard input handling (escape key to exit)
+  - [x] Renderer stub with basic GPU-accelerated clear screen
+  - [x] Structured code for platform abstraction
 - [ ] Linting and formatting enforcement
 - [ ] Pre-commit hooks
 - [ ] Documentation scaffolding
@@ -44,12 +52,19 @@ cd QuantaTerm
 # Build the workspace
 cargo build
 
+# Run the main application (Phase 0: Window & Input Demo)
+cargo run --bin quantaterm
+# Press ESC to exit the window
+
 # Run tests
 cargo test
 
 # Check code quality
 cargo clippy -- -D warnings
 cargo fmt --check
+
+# Run Phase 0 demo (includes display environment check)
+./scripts/demo_phase0.sh
 ```
 
 ### Project Structure
