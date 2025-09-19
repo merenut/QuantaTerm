@@ -10,7 +10,7 @@ use winit::{
     event::{ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowId, WindowAttributes},
+    window::{Window, WindowAttributes, WindowId},
 };
 
 use quantaterm_renderer::Renderer;
@@ -59,7 +59,7 @@ impl QuantaTermApp {
             .context("Failed to create window")?;
 
         let window = Arc::new(window);
-        
+
         // Initialize renderer with the window
         let renderer = pollster::block_on(Renderer::new(window.clone()))
             .context("Failed to initialize renderer")?;

@@ -4,9 +4,7 @@
 
 use anyhow::{Context, Result};
 use tracing::info;
-use winit::{
-    event_loop::{ControlFlow, EventLoop},
-};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
 
