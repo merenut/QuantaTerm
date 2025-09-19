@@ -11,11 +11,17 @@ use std::io::{BufRead, BufReader, Write};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn, instrument, trace};
 
+pub mod parser;
+
+pub use parser::{TerminalParser, ParseAction, CsiAction, EscAction, ParserState};
+
 /// Events from the PTY that need to be handled by the application
 #[derive(Debug, Clone)]
 pub enum PtyEvent {
-    /// Data received from the shell (stdout/stderr)
+    /// Raw data received from the shell (stdout/stderr)
     Data(Vec<u8>),
+    /// Parsed actions from terminal escape sequences
+    ParsedActions(Vec<ParseAction>),
     /// Shell process has exited
     ProcessExit(i32),
     /// Error occurred in PTY operations
@@ -208,6 +214,7 @@ impl Pty {
         let read_task = tokio::spawn(async move {
             let mut buf_reader = BufReader::new(reader);
             let mut buffer = Vec::new();
+            let mut parser = TerminalParser::new();
 
             loop {
                 buffer.clear();
@@ -223,6 +230,8 @@ impl Pty {
                             bytes_read = bytes_read,
                             "Read data from shell"
                         );
+                        
+                        // Send raw data event
                         if let Err(e) = read_event_tx.send(PtyEvent::Data(buffer.clone())) {
                             warn!(
                                 subsystem = "pty",
@@ -230,6 +239,19 @@ impl Pty {
                                 "Failed to send data event"
                             );
                             break;
+                        }
+                        
+                        // Parse the data and send parsed actions
+                        let actions = parser.parse(&buffer);
+                        if !actions.is_empty() {
+                            if let Err(e) = read_event_tx.send(PtyEvent::ParsedActions(actions)) {
+                                warn!(
+                                    subsystem = "pty",
+                                    error = %e,
+                                    "Failed to send parsed actions event"
+                                );
+                                break;
+                            }
                         }
                     }
                     Err(e) => {

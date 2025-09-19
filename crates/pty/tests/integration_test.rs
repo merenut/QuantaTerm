@@ -27,6 +27,10 @@ async fn test_pty_shell_integration() -> Result<(), Box<dyn std::error::Error>> 
                         output_received = true;
                     }
                 }
+                PtyEvent::ParsedActions(_actions) => {
+                    // For this test, we only care about raw data output
+                    // Parsed actions would be used by the terminal emulator
+                }
                 PtyEvent::ProcessExit(_) | PtyEvent::Error(_) => {
                     break;
                 }
