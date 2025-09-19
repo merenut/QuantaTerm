@@ -26,10 +26,10 @@ impl QuantaTermApp {
     /// Create a new QuantaTerm application
     pub async fn new() -> Result<Self> {
         info!("Initializing QuantaTerm application");
-        
-        // Initialize PTY 
+
+        // Initialize PTY
         let pty = Pty::new();
-        
+
         Ok(Self {
             window: None,
             renderer: None,
@@ -54,7 +54,7 @@ impl QuantaTermApp {
                 }
                 PhysicalKey::Code(keycode) => {
                     debug!("Key pressed: {:?}", keycode);
-                    
+
                     // Convert keycode to bytes and send to PTY
                     if let Some(ref pty) = self.pty {
                         if let Some(data) = self.keycode_to_bytes(keycode) {
@@ -148,10 +148,11 @@ impl QuantaTermApp {
         if let Some(ref mut pty) = self.pty {
             let cols = 80; // Default terminal width
             let rows = 24; // Default terminal height
-            
-            pty.start_shell(cols, rows).await
+
+            pty.start_shell(cols, rows)
+                .await
                 .context("Failed to start shell")?;
-                
+
             // Add welcome message to renderer
             if let Some(ref mut renderer) = self.renderer {
                 renderer.add_text("QuantaTerm v0.1.0 - Shell Started");
@@ -173,7 +174,7 @@ impl QuantaTermApp {
                         // Convert bytes to string for display
                         if let Ok(text) = String::from_utf8(data.clone()) {
                             debug!("Shell output: {}", text.trim());
-                            
+
                             // Send text to renderer for display
                             if let Some(ref mut renderer) = self.renderer {
                                 renderer.add_text(&text);
@@ -189,7 +190,7 @@ impl QuantaTermApp {
                     }
                     PtyEvent::ProcessExit(code) => {
                         info!("Shell process exited with code: {}", code);
-                        
+
                         // Add exit message to display
                         if let Some(ref mut renderer) = self.renderer {
                             renderer.add_text(&format!("Shell exited with code: {}", code));
@@ -197,7 +198,7 @@ impl QuantaTermApp {
                     }
                     PtyEvent::Error(error) => {
                         error!("PTY error: {}", error);
-                        
+
                         // Add error message to display
                         if let Some(ref mut renderer) = self.renderer {
                             renderer.add_text(&format!("PTY Error: {}", error));
@@ -254,13 +255,13 @@ impl ApplicationHandler for QuantaTermApp {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(physical_size);
                 }
-                
-                // Resize PTY to match window 
+
+                // Resize PTY to match window
                 if let Some(ref pty) = self.pty {
                     // Rough calculation: divide by character size (estimate)
                     let cols = (physical_size.width / 8).max(1) as u16; // ~8px per char width
                     let rows = (physical_size.height / 16).max(1) as u16; // ~16px per char height
-                    
+
                     if let Err(e) = pty.resize(cols, rows) {
                         warn!("Failed to resize PTY: {}", e);
                     }
@@ -286,22 +287,25 @@ mod tests {
     #[test]
     fn test_keycode_conversion() {
         let app = pollster::block_on(QuantaTermApp::new()).unwrap();
-        
+
         assert_eq!(app.keycode_to_bytes(KeyCode::Enter), Some(b"\r".to_vec()));
         assert_eq!(app.keycode_to_bytes(KeyCode::KeyA), Some(b"a".to_vec()));
         assert_eq!(app.keycode_to_bytes(KeyCode::Space), Some(b" ".to_vec()));
-        assert_eq!(app.keycode_to_bytes(KeyCode::ArrowUp), Some(b"\x1b[A".to_vec()));
+        assert_eq!(
+            app.keycode_to_bytes(KeyCode::ArrowUp),
+            Some(b"\x1b[A".to_vec())
+        );
     }
 
     #[test]
     fn test_pty_event_handling() {
         use quantaterm_pty::PtyEvent;
-        
+
         // Test that our event handling logic works
         let event_data = PtyEvent::Data(b"Hello World\n".to_vec());
         let event_exit = PtyEvent::ProcessExit(0);
         let event_error = PtyEvent::Error("Test error".to_string());
-        
+
         // Verify events can be created and matched
         match event_data {
             PtyEvent::Data(data) => {
@@ -310,12 +314,12 @@ mod tests {
             }
             _ => panic!("Expected Data event"),
         }
-        
+
         match event_exit {
             PtyEvent::ProcessExit(code) => assert_eq!(code, 0),
             _ => panic!("Expected ProcessExit event"),
         }
-        
+
         match event_error {
             PtyEvent::Error(err) => assert_eq!(err, "Test error"),
             _ => panic!("Expected Error event"),

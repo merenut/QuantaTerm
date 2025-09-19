@@ -147,7 +147,10 @@ pub fn init_logging(config: &LoggingConfig) -> crate::Result<()> {
             .with_timer(ChronoUtc::rfc_3339());
 
         registry.with(json_layer).try_init().map_err(|e| {
-            crate::QuantaTermError::Configuration(format!("Failed to initialize JSON logging: {}", e))
+            crate::QuantaTermError::Configuration(format!(
+                "Failed to initialize JSON logging: {}",
+                e
+            ))
         })?;
     } else {
         // Human-readable format
@@ -171,7 +174,7 @@ fn build_env_filter(config: &LoggingConfig) -> EnvFilter {
 
     // Start with global level
     let global_level: Level = config.global_level.into();
-    
+
     // Set global level for all quantaterm modules
     filter = filter.add_directive(format!("quantaterm={}", global_level).parse().unwrap());
 
@@ -201,13 +204,13 @@ pub fn update_module_level(module: &str, level: LogLevel) -> crate::Result<()> {
     // Note: tracing-subscriber doesn't support runtime reconfiguration out of the box.
     // For now, we'll store the configuration and require a restart.
     // A full implementation would use a reload layer or custom subscriber.
-    
+
     tracing::warn!(
         module = module,
         level = %level,
         "Runtime log level updates require application restart in current implementation"
     );
-    
+
     Ok(())
 }
 
@@ -217,12 +220,18 @@ pub fn dev_config() -> LoggingConfig {
     config.global_level = LogLevel::Debug;
     config.use_colors = true;
     config.json_format = false;
-    
+
     // Enable debug for key development modules
-    config.module_levels.insert(modules::RENDERER.to_string(), LogLevel::Debug);
-    config.module_levels.insert(modules::PTY.to_string(), LogLevel::Debug);
-    config.module_levels.insert(modules::BLOCKS.to_string(), LogLevel::Info);
-    
+    config
+        .module_levels
+        .insert(modules::RENDERER.to_string(), LogLevel::Debug);
+    config
+        .module_levels
+        .insert(modules::PTY.to_string(), LogLevel::Debug);
+    config
+        .module_levels
+        .insert(modules::BLOCKS.to_string(), LogLevel::Info);
+
     config
 }
 
@@ -232,14 +241,24 @@ pub fn prod_config() -> LoggingConfig {
     config.global_level = LogLevel::Info;
     config.use_colors = false;
     config.json_format = true;
-    
+
     // Production-appropriate levels
-    config.module_levels.insert(modules::RENDERER.to_string(), LogLevel::Warn);
-    config.module_levels.insert(modules::PTY.to_string(), LogLevel::Info);
-    config.module_levels.insert(modules::BLOCKS.to_string(), LogLevel::Warn);
-    config.module_levels.insert(modules::CONFIG.to_string(), LogLevel::Info);
-    config.module_levels.insert(modules::CLI.to_string(), LogLevel::Info);
-    
+    config
+        .module_levels
+        .insert(modules::RENDERER.to_string(), LogLevel::Warn);
+    config
+        .module_levels
+        .insert(modules::PTY.to_string(), LogLevel::Info);
+    config
+        .module_levels
+        .insert(modules::BLOCKS.to_string(), LogLevel::Warn);
+    config
+        .module_levels
+        .insert(modules::CONFIG.to_string(), LogLevel::Info);
+    config
+        .module_levels
+        .insert(modules::CLI.to_string(), LogLevel::Info);
+
     config
 }
 
@@ -252,12 +271,18 @@ pub fn ci_config() -> LoggingConfig {
     config.include_timestamps = true;
     config.include_severity = true;
     config.include_subsystem = true;
-    
+
     // CI-appropriate levels for debugging test failures
-    config.module_levels.insert(modules::CORE.to_string(), LogLevel::Debug);
-    config.module_levels.insert(modules::PTY.to_string(), LogLevel::Debug);
-    config.module_levels.insert(modules::BLOCKS.to_string(), LogLevel::Debug);
-    
+    config
+        .module_levels
+        .insert(modules::CORE.to_string(), LogLevel::Debug);
+    config
+        .module_levels
+        .insert(modules::PTY.to_string(), LogLevel::Debug);
+    config
+        .module_levels
+        .insert(modules::BLOCKS.to_string(), LogLevel::Debug);
+
     config
 }
 
@@ -275,7 +300,7 @@ mod tests {
         assert_eq!(LogLevel::from_str("error").unwrap(), LogLevel::Error);
         assert_eq!(LogLevel::from_str("off").unwrap(), LogLevel::Off);
         assert_eq!(LogLevel::from_str("none").unwrap(), LogLevel::Off);
-        
+
         assert!(LogLevel::from_str("invalid").is_err());
     }
 
@@ -307,8 +332,14 @@ mod tests {
         assert_eq!(config.global_level, LogLevel::Debug);
         assert!(!config.json_format);
         assert!(config.use_colors);
-        assert_eq!(config.module_levels.get(modules::RENDERER), Some(&LogLevel::Debug));
-        assert_eq!(config.module_levels.get(modules::PTY), Some(&LogLevel::Debug));
+        assert_eq!(
+            config.module_levels.get(modules::RENDERER),
+            Some(&LogLevel::Debug)
+        );
+        assert_eq!(
+            config.module_levels.get(modules::PTY),
+            Some(&LogLevel::Debug)
+        );
     }
 
     #[test]
@@ -317,7 +348,10 @@ mod tests {
         assert_eq!(config.global_level, LogLevel::Info);
         assert!(config.json_format);
         assert!(!config.use_colors);
-        assert_eq!(config.module_levels.get(modules::RENDERER), Some(&LogLevel::Warn));
+        assert_eq!(
+            config.module_levels.get(modules::RENDERER),
+            Some(&LogLevel::Warn)
+        );
     }
 
     #[test]
@@ -327,6 +361,9 @@ mod tests {
         assert!(config.json_format);
         assert!(!config.use_colors);
         assert!(config.include_timestamps);
-        assert_eq!(config.module_levels.get(modules::CORE), Some(&LogLevel::Debug));
+        assert_eq!(
+            config.module_levels.get(modules::CORE),
+            Some(&LogLevel::Debug)
+        );
     }
 }

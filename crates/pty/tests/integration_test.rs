@@ -10,14 +10,14 @@ async fn test_pty_shell_integration() -> Result<(), Box<dyn std::error::Error>> 
     // Create and start PTY
     let mut pty = Pty::new();
     pty.start_shell(80, 24).await?;
-    
+
     // Send a simple command that should produce output
     pty.write_data(b"echo test\n")?;
-    
+
     // Wait for output
     let mut output_received = false;
     let start_time = std::time::Instant::now();
-    
+
     while start_time.elapsed() < Duration::from_secs(3) && !output_received {
         if let Some(event) = pty.try_recv_event() {
             match event {
@@ -38,10 +38,10 @@ async fn test_pty_shell_integration() -> Result<(), Box<dyn std::error::Error>> 
         }
         time::sleep(Duration::from_millis(50)).await;
     }
-    
+
     // Shutdown
     pty.shutdown()?;
-    
+
     assert!(output_received, "Should receive echo output from shell");
     Ok(())
 }
@@ -50,14 +50,14 @@ async fn test_pty_shell_integration() -> Result<(), Box<dyn std::error::Error>> 
 #[tokio::test]
 async fn test_pty_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
     let mut pty = Pty::new();
-    
+
     // Should be able to start shell
     pty.start_shell(80, 24).await?;
-    
+
     // Should be able to send commands
     assert!(pty.write_data(b"test\n").is_ok());
     assert!(pty.resize(120, 30).is_ok());
     assert!(pty.shutdown().is_ok());
-    
+
     Ok(())
 }

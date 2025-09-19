@@ -5,10 +5,10 @@
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
-use quantaterm_core::logging::{LoggingConfig, LogLevel};
+use quantaterm_core::logging::{LogLevel, LoggingConfig};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn, error, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 /// Main configuration structure for QuantaTerm
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,36 +90,38 @@ impl Config {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> quantaterm_core::Result<Self> {
         let path = path.as_ref();
         info!(
-            subsystem = "config", 
+            subsystem = "config",
             config_file = ?path,
             "Loading configuration from file"
         );
 
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| {
-                error!(
-                    subsystem = "config",
-                    config_file = ?path,
-                    error = %e,
-                    "Failed to read configuration file"
-                );
-                quantaterm_core::QuantaTermError::Configuration(
-                    format!("Failed to read config file '{}': {}", path.display(), e)
-                )
-            })?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            error!(
+                subsystem = "config",
+                config_file = ?path,
+                error = %e,
+                "Failed to read configuration file"
+            );
+            quantaterm_core::QuantaTermError::Configuration(format!(
+                "Failed to read config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
 
-        let config: Config = toml::from_str(&content)
-            .map_err(|e| {
-                error!(
-                    subsystem = "config",
-                    config_file = ?path,
-                    error = %e,
-                    "Failed to parse configuration file"
-                );
-                quantaterm_core::QuantaTermError::Configuration(
-                    format!("Failed to parse config file '{}': {}", path.display(), e)
-                )
-            })?;
+        let config: Config = toml::from_str(&content).map_err(|e| {
+            error!(
+                subsystem = "config",
+                config_file = ?path,
+                error = %e,
+                "Failed to parse configuration file"
+            );
+            quantaterm_core::QuantaTermError::Configuration(format!(
+                "Failed to parse config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
 
         debug!(
             subsystem = "config",
@@ -143,30 +145,31 @@ impl Config {
             "Saving configuration to file"
         );
 
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| {
-                error!(
-                    subsystem = "config",
-                    error = %e,
-                    "Failed to serialize configuration"
-                );
-                quantaterm_core::QuantaTermError::Configuration(
-                    format!("Failed to serialize config: {}", e)
-                )
-            })?;
+        let content = toml::to_string_pretty(self).map_err(|e| {
+            error!(
+                subsystem = "config",
+                error = %e,
+                "Failed to serialize configuration"
+            );
+            quantaterm_core::QuantaTermError::Configuration(format!(
+                "Failed to serialize config: {}",
+                e
+            ))
+        })?;
 
-        std::fs::write(path, content)
-            .map_err(|e| {
-                error!(
-                    subsystem = "config",
-                    config_file = ?path,
-                    error = %e,
-                    "Failed to write configuration file"
-                );
-                quantaterm_core::QuantaTermError::Configuration(
-                    format!("Failed to write config file '{}': {}", path.display(), e)
-                )
-            })?;
+        std::fs::write(path, content).map_err(|e| {
+            error!(
+                subsystem = "config",
+                config_file = ?path,
+                error = %e,
+                "Failed to write configuration file"
+            );
+            quantaterm_core::QuantaTermError::Configuration(format!(
+                "Failed to write config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
 
         debug!(
             subsystem = "config",
@@ -263,7 +266,7 @@ impl Config {
                 "Invalid terminal dimensions"
             );
             return Err(quantaterm_core::QuantaTermError::Configuration(
-                "Terminal dimensions must be greater than 0".to_string()
+                "Terminal dimensions must be greater than 0".to_string(),
             ));
         }
 
@@ -275,7 +278,7 @@ impl Config {
                 "Invalid font size"
             );
             return Err(quantaterm_core::QuantaTermError::Configuration(
-                "Font size must be greater than 0".to_string()
+                "Font size must be greater than 0".to_string(),
             ));
         }
 
@@ -286,7 +289,7 @@ impl Config {
                 "Invalid target FPS"
             );
             return Err(quantaterm_core::QuantaTermError::Configuration(
-                "Target FPS must be greater than 0".to_string()
+                "Target FPS must be greater than 0".to_string(),
             ));
         }
 

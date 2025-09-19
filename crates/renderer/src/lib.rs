@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use tracing::{debug, info, trace, warn, instrument};
+use tracing::{debug, info, instrument, trace, warn};
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -42,14 +42,14 @@ impl Renderer {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
-        
+
         debug!(subsystem = "renderer", "Created wgpu instance");
 
         // Create surface
         let surface = instance
             .create_surface(window.clone())
             .context("Failed to create surface")?;
-        
+
         debug!(subsystem = "renderer", "Created surface");
 
         // Request adapter
@@ -74,7 +74,7 @@ impl Renderer {
             .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .context("Failed to create device")?;
-        
+
         debug!(subsystem = "renderer", "Created device and queue");
 
         // Configure surface
@@ -98,7 +98,7 @@ impl Renderer {
         };
 
         surface.configure(&device, &config);
-        
+
         trace!(
             subsystem = "renderer",
             surface_format = ?surface_format,
@@ -199,14 +199,15 @@ impl Renderer {
     #[instrument(name = "renderer_add_text", skip(self))]
     pub fn add_text(&mut self, text: &str) {
         // Split text into lines and add to buffer
-        let new_lines: Vec<_> = text.lines()
+        let new_lines: Vec<_> = text
+            .lines()
             .filter(|line| !line.trim().is_empty())
             .map(|line| line.to_string())
             .collect();
-        
+
         let line_count = new_lines.len();
         self.text_buffer.extend(new_lines);
-        
+
         debug!(
             subsystem = "renderer",
             line_count = line_count,
@@ -256,7 +257,7 @@ mod tests {
         // We can't create a full renderer without a window, but we can test
         // the logic by creating a mock renderer struct with the text buffer
         let mut text_buffer = Vec::new();
-        
+
         // Test adding text
         let text = "Hello\nWorld\nTest";
         for line in text.lines() {
@@ -264,22 +265,22 @@ mod tests {
                 text_buffer.push(line.to_string());
             }
         }
-        
+
         assert_eq!(text_buffer.len(), 3);
         assert_eq!(text_buffer[0], "Hello");
         assert_eq!(text_buffer[1], "World");
         assert_eq!(text_buffer[2], "Test");
-        
+
         // Test buffer length limiting
         for i in 0..105 {
             text_buffer.push(format!("Line {}", i));
         }
-        
+
         // Simulate buffer limit of 100
         if text_buffer.len() > 100 {
             text_buffer.drain(0..text_buffer.len() - 100);
         }
-        
+
         assert_eq!(text_buffer.len(), 100);
     }
 }
