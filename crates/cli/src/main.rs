@@ -15,8 +15,7 @@ use app::QuantaTermApp;
 async fn main() -> Result<()> {
     // Initialize structured logging with development configuration
     let logging_config = dev_config();
-    logging::init_logging(&logging_config)
-        .context("Failed to initialize logging")?;
+    logging::init_logging(&logging_config).context("Failed to initialize logging")?;
 
     info!(
         version = quantaterm_core::VERSION,

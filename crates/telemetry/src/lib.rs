@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn, error, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 /// Performance metrics collector
 #[derive(Debug)]
@@ -143,7 +143,11 @@ impl Telemetry {
                     "Frame rendered"
                 );
             }
-            TelemetryEvent::PtyOperation { operation, duration_ms, success } => {
+            TelemetryEvent::PtyOperation {
+                operation,
+                duration_ms,
+                success,
+            } => {
                 debug!(
                     subsystem = "telemetry",
                     event_type = "pty_operation",
@@ -162,7 +166,10 @@ impl Telemetry {
                     "Terminal resized"
                 );
             }
-            TelemetryEvent::MemoryUsage { rss_bytes, virtual_bytes } => {
+            TelemetryEvent::MemoryUsage {
+                rss_bytes,
+                virtual_bytes,
+            } => {
                 debug!(
                     subsystem = "telemetry",
                     event_type = "memory_usage",
@@ -185,7 +192,7 @@ impl Telemetry {
 
         let count = self.counters.entry(name.to_string()).or_insert(0);
         *count += 1;
-        
+
         debug!(
             subsystem = "telemetry",
             counter_name = name,
@@ -203,7 +210,7 @@ impl Telemetry {
 
         let count = self.counters.entry(name.to_string()).or_insert(0);
         *count += value;
-        
+
         debug!(
             subsystem = "telemetry",
             counter_name = name,
@@ -237,15 +244,18 @@ impl Telemetry {
 
         if let Some(start_time) = self.start_times.remove(name) {
             let duration = start_time.elapsed();
-            self.timings.entry(name.to_string()).or_insert_with(Vec::new).push(duration);
-            
+            self.timings
+                .entry(name.to_string())
+                .or_insert_with(Vec::new)
+                .push(duration);
+
             debug!(
                 subsystem = "telemetry",
                 timing_name = name,
                 duration_ms = duration.as_millis(),
                 "Completed timing operation"
             );
-            
+
             Some(duration)
         } else {
             warn!(
@@ -272,10 +282,10 @@ impl Telemetry {
             let sum: Duration = durations.iter().sum();
             let count = durations.len();
             let avg = sum / count as u32;
-            
+
             let mut sorted_durations = durations.clone();
             sorted_durations.sort();
-            
+
             let min = sorted_durations[0];
             let max = sorted_durations[count - 1];
             let median = sorted_durations[count / 2];
@@ -297,9 +307,13 @@ impl Telemetry {
     #[instrument(name = "telemetry_get_summary", skip(self))]
     pub fn get_summary(&self) -> TelemetrySummary {
         let counter_summary: HashMap<String, u64> = self.counters.clone();
-        let timing_summary: HashMap<String, TimingStats> = self.timings
+        let timing_summary: HashMap<String, TimingStats> = self
+            .timings
             .keys()
-            .filter_map(|name| self.get_timing_stats(name).map(|stats| (name.clone(), stats)))
+            .filter_map(|name| {
+                self.get_timing_stats(name)
+                    .map(|stats| (name.clone(), stats))
+            })
             .collect();
 
         debug!(
@@ -324,7 +338,7 @@ impl Telemetry {
             cleared_timings = self.timings.len(),
             "Cleared all telemetry data"
         );
-        
+
         self.counters.clear();
         self.timings.clear();
         self.start_times.clear();
@@ -380,27 +394,27 @@ mod tests {
     #[test]
     fn test_counter_operations() {
         let mut telemetry = Telemetry::new();
-        
+
         telemetry.increment_counter("test_counter");
         assert_eq!(telemetry.get_counter("test_counter"), 1);
-        
+
         telemetry.add_counter("test_counter", 5);
         assert_eq!(telemetry.get_counter("test_counter"), 6);
-        
+
         assert_eq!(telemetry.get_counter("nonexistent"), 0);
     }
 
     #[test]
     fn test_timing_operations() {
         let mut telemetry = Telemetry::new();
-        
+
         telemetry.start_timing("test_operation");
         thread::sleep(Duration::from_millis(10));
         let duration = telemetry.end_timing("test_operation");
-        
+
         assert!(duration.is_some());
         assert!(duration.unwrap() >= Duration::from_millis(10));
-        
+
         let stats = telemetry.get_timing_stats("test_operation");
         assert!(stats.is_some());
         assert_eq!(stats.unwrap().count, 1);
@@ -409,10 +423,10 @@ mod tests {
     #[test]
     fn test_disabled_telemetry() {
         let mut telemetry = Telemetry::disabled();
-        
+
         telemetry.increment_counter("test");
         assert_eq!(telemetry.get_counter("test"), 0);
-        
+
         telemetry.start_timing("test");
         let duration = telemetry.end_timing("test");
         assert!(duration.is_none());
@@ -421,18 +435,18 @@ mod tests {
     #[test]
     fn test_event_recording() {
         let mut telemetry = Telemetry::new();
-        
+
         // Test various events (mainly for compilation and no panics)
         telemetry.record_event(TelemetryEvent::AppStart {
             version: "0.1.0".to_string(),
             platform: "test".to_string(),
         });
-        
+
         telemetry.record_event(TelemetryEvent::RenderFrame {
             frame_time_ms: 16.67,
             fps: 60.0,
         });
-        
+
         telemetry.record_event(TelemetryEvent::TerminalResize {
             width: 80,
             height: 24,
@@ -442,15 +456,15 @@ mod tests {
     #[test]
     fn test_telemetry_summary() {
         let mut telemetry = Telemetry::new();
-        
+
         telemetry.increment_counter("frames");
         telemetry.increment_counter("frames");
         telemetry.add_counter("bytes_transferred", 1024);
-        
+
         telemetry.start_timing("render");
         thread::sleep(Duration::from_millis(1));
         telemetry.end_timing("render");
-        
+
         let summary = telemetry.get_summary();
         assert_eq!(summary.counters.get("frames"), Some(&2));
         assert_eq!(summary.counters.get("bytes_transferred"), Some(&1024));

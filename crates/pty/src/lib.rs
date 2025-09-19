@@ -9,11 +9,11 @@ use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, PtySize};
 use std::io::{BufRead, BufReader, Write};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn, instrument, trace};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 pub mod parser;
 
-pub use parser::{TerminalParser, ParseAction, CsiAction, EscAction, ParserState};
+pub use parser::{CsiAction, EscAction, ParseAction, ParserState, TerminalParser};
 
 /// Events from the PTY that need to be handled by the application
 #[derive(Debug, Clone)]
@@ -34,11 +34,11 @@ pub enum PtyCommand {
     /// Write data to the shell's stdin
     WriteData(Vec<u8>),
     /// Resize the PTY
-    Resize { 
+    Resize {
         /// New width in columns
-        width: u16, 
+        width: u16,
         /// New height in rows
-        height: u16 
+        height: u16,
     },
     /// Shutdown the PTY
     Shutdown,
@@ -96,8 +96,7 @@ impl Pty {
     /// Send a command to the PTY
     pub fn send_command(&self, command: PtyCommand) -> Result<()> {
         if let Some(ref tx) = self.command_tx {
-            tx.send(command)
-                .context("Failed to send command to PTY")?;
+            tx.send(command).context("Failed to send command to PTY")?;
             Ok(())
         } else {
             anyhow::bail!("PTY not started")
@@ -206,8 +205,14 @@ impl Pty {
             .context("Failed to spawn shell")?;
 
         // Get handles for reading and writing
-        let reader = pty_pair.master.try_clone_reader().context("Failed to clone reader")?;
-        let mut writer = pty_pair.master.take_writer().context("Failed to take writer")?;
+        let reader = pty_pair
+            .master
+            .try_clone_reader()
+            .context("Failed to clone reader")?;
+        let mut writer = pty_pair
+            .master
+            .take_writer()
+            .context("Failed to take writer")?;
 
         // Spawn task to read shell output
         let read_event_tx = event_tx.clone();
@@ -230,7 +235,7 @@ impl Pty {
                             bytes_read = bytes_read,
                             "Read data from shell"
                         );
-                        
+
                         // Send raw data event
                         if let Err(e) = read_event_tx.send(PtyEvent::Data(buffer.clone())) {
                             warn!(
@@ -240,7 +245,7 @@ impl Pty {
                             );
                             break;
                         }
-                        
+
                         // Parse the data and send parsed actions
                         let actions = parser.parse(&buffer);
                         if !actions.is_empty() {
