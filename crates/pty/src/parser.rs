@@ -4,6 +4,7 @@
 //! with a focus on SGR (Select Graphic Rendition) codes.
 
 use quantaterm_blocks::{CellAttrs, Color};
+pub use quantaterm_core::CsiAction;
 use tracing::{debug, trace};
 use vte::{Params, Perform};
 
@@ -20,20 +21,6 @@ pub enum ParseAction {
     EscDispatch(EscAction),
     /// OSC (Operating System Command) action
     OscDispatch(Vec<Vec<u8>>),
-}
-
-/// CSI sequence actions
-#[derive(Debug, Clone)]
-pub enum CsiAction {
-    /// SGR (Select Graphic Rendition) - formatting attributes
-    Sgr(Vec<u16>),
-    /// Cursor movement and other CSI commands
-    Other {
-        /// The final byte of the CSI sequence
-        command: char,
-        /// Parameters for the command
-        params: Vec<u16>,
-    },
 }
 
 /// ESC sequence actions
@@ -277,6 +264,63 @@ impl Perform for ParsePerformer {
                 self.actions
                     .push(ParseAction::CsiDispatch(CsiAction::Sgr(params_vec)));
             }
+            'A' => {
+                // CUU - Cursor Up
+                let lines = params_vec.first().copied().unwrap_or(0);
+                let lines = if lines == 0 { 1 } else { lines }; // Default to 1 if not specified
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorUp(lines)));
+            }
+            'B' => {
+                // CUD - Cursor Down
+                let lines = params_vec.first().copied().unwrap_or(0);
+                let lines = if lines == 0 { 1 } else { lines };
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorDown(lines)));
+            }
+            'C' => {
+                // CUF - Cursor Forward
+                let cols = params_vec.first().copied().unwrap_or(0);
+                let cols = if cols == 0 { 1 } else { cols };
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorForward(cols)));
+            }
+            'D' => {
+                // CUB - Cursor Backward
+                let cols = params_vec.first().copied().unwrap_or(0);
+                let cols = if cols == 0 { 1 } else { cols };
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorBackward(cols)));
+            }
+            'E' => {
+                // CNL - Cursor Next Line
+                let lines = params_vec.first().copied().unwrap_or(0);
+                let lines = if lines == 0 { 1 } else { lines };
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorNextLine(lines)));
+            }
+            'F' => {
+                // CPL - Cursor Previous Line
+                let lines = params_vec.first().copied().unwrap_or(0);
+                let lines = if lines == 0 { 1 } else { lines };
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorPreviousLine(lines)));
+            }
+            'G' => {
+                // CHA - Cursor Horizontal Absolute
+                let col = params_vec.first().copied().unwrap_or(1);
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorHorizontalAbsolute(col.saturating_sub(1))));
+            }
+            'H' | 'f' => {
+                // CUP/HVP - Cursor Position
+                let row = params_vec.first().copied().unwrap_or(1);
+                let col = params_vec.get(1).copied().unwrap_or(1);
+                self.actions
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorPosition(
+                        row.saturating_sub(1), col.saturating_sub(1)
+                    )));
+            }
             _ => {
                 // Other CSI commands
                 self.actions
@@ -419,6 +463,102 @@ mod tests {
                 }
                 _ => panic!("Expected Print action"),
             }
+        }
+    }
+
+    #[test]
+    fn test_cursor_movement_parsing() {
+        let mut parser = TerminalParser::new();
+
+        // Test cursor up
+        let actions = parser.parse(b"\x1b[A");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorUp(lines)) => {
+                assert_eq!(*lines, 1); // Default is 1
+            }
+            _ => panic!("Expected CursorUp action, got: {:?}", actions[0]),
+        }
+
+        // Test cursor up with parameter
+        let actions = parser.parse(b"\x1b[5A");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorUp(lines)) => {
+                assert_eq!(*lines, 5);
+            }
+            _ => panic!("Expected CursorUp action with parameter"),
+        }
+
+        // Test cursor down
+        let actions = parser.parse(b"\x1b[3B");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorDown(lines)) => {
+                assert_eq!(*lines, 3);
+            }
+            _ => panic!("Expected CursorDown action"),
+        }
+
+        // Test cursor forward
+        let actions = parser.parse(b"\x1b[2C");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorForward(cols)) => {
+                assert_eq!(*cols, 2);
+            }
+            _ => panic!("Expected CursorForward action"),
+        }
+
+        // Test cursor backward
+        let actions = parser.parse(b"\x1b[4D");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorBackward(cols)) => {
+                assert_eq!(*cols, 4);
+            }
+            _ => panic!("Expected CursorBackward action"),
+        }
+
+        // Test cursor position
+        let actions = parser.parse(b"\x1b[10;20H");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorPosition(row, col)) => {
+                assert_eq!(*row, 9); // 1-based to 0-based conversion
+                assert_eq!(*col, 19);
+            }
+            _ => panic!("Expected CursorPosition action"),
+        }
+
+        // Test cursor horizontal absolute
+        let actions = parser.parse(b"\x1b[15G");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorHorizontalAbsolute(col)) => {
+                assert_eq!(*col, 14); // 1-based to 0-based conversion
+            }
+            _ => panic!("Expected CursorHorizontalAbsolute action"),
+        }
+
+        // Test cursor next line
+        let actions = parser.parse(b"\x1b[2E");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorNextLine(lines)) => {
+                assert_eq!(*lines, 2);
+            }
+            _ => panic!("Expected CursorNextLine action"),
+        }
+
+        // Test cursor previous line
+        let actions = parser.parse(b"\x1b[3F");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            ParseAction::CsiDispatch(CsiAction::CursorPreviousLine(lines)) => {
+                assert_eq!(*lines, 3);
+            }
+            _ => panic!("Expected CursorPreviousLine action"),
         }
     }
 

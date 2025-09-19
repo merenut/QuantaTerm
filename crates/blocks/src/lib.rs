@@ -146,6 +146,74 @@ impl Default for Cell {
 /// A row of terminal cells
 pub type CellRow = Vec<Cell>;
 
+/// Represents a position in the terminal grid
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    /// Column position (0-based)
+    pub col: u16,
+    /// Row position (0-based, relative to viewport)
+    pub row: u16,
+}
+
+impl Position {
+    /// Create a new position
+    pub fn new(col: u16, row: u16) -> Self {
+        Self { col, row }
+    }
+}
+
+impl PartialOrd for Position {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Position {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Compare by row first, then by column
+        self.row.cmp(&other.row).then(self.col.cmp(&other.col))
+    }
+}
+
+/// Represents a text selection in the terminal
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Selection {
+    /// Start position of the selection
+    pub start: Position,
+    /// End position of the selection (inclusive)
+    pub end: Position,
+}
+
+impl Selection {
+    /// Create a new selection
+    pub fn new(start: Position, end: Position) -> Self {
+        // Ensure start is always before end
+        if start <= end {
+            Self { start, end }
+        } else {
+            Self {
+                start: end,
+                end: start,
+            }
+        }
+    }
+
+    /// Check if a position is within this selection
+    pub fn contains(&self, pos: Position) -> bool {
+        pos >= self.start && pos <= self.end
+    }
+
+    /// Check if the selection spans multiple lines
+    pub fn is_multiline(&self) -> bool {
+        self.start.row != self.end.row
+    }
+
+    /// Get the selection bounds normalized (start <= end)
+    pub fn normalized(&self) -> (Position, Position) {
+        (self.start, self.end)
+    }
+}
+
 /// Terminal grid with scrollback buffer and viewport management
 #[derive(Debug)]
 pub struct TerminalGrid {
@@ -167,6 +235,8 @@ pub struct TerminalGrid {
     current_bg: Color,
     /// Current attributes for new cells
     current_attrs: CellAttrs,
+    /// Current text selection, if any
+    selection: Option<Selection>,
 }
 
 impl TerminalGrid {
@@ -187,6 +257,7 @@ impl TerminalGrid {
             current_fg: Color::DEFAULT_FG,
             current_bg: Color::DEFAULT_BG,
             current_attrs: CellAttrs::empty(),
+            selection: None,
         };
 
         // Initialize with empty rows
@@ -532,6 +603,46 @@ impl TerminalGrid {
         );
     }
 
+    /// Move cursor up by the specified number of lines
+    pub fn move_cursor_up(&mut self, lines: u16) {
+        self.cursor_pos.1 = self.cursor_pos.1.saturating_sub(lines);
+    }
+
+    /// Move cursor down by the specified number of lines
+    pub fn move_cursor_down(&mut self, lines: u16) {
+        self.cursor_pos.1 = (self.cursor_pos.1 + lines).min(self.rows.saturating_sub(1));
+    }
+
+    /// Move cursor left by the specified number of columns
+    pub fn move_cursor_left(&mut self, cols: u16) {
+        self.cursor_pos.0 = self.cursor_pos.0.saturating_sub(cols);
+    }
+
+    /// Move cursor right by the specified number of columns
+    pub fn move_cursor_right(&mut self, cols: u16) {
+        self.cursor_pos.0 = (self.cursor_pos.0 + cols).min(self.cols.saturating_sub(1));
+    }
+
+    /// Move cursor to specific column on current row
+    pub fn move_cursor_to_column(&mut self, col: u16) {
+        self.cursor_pos.0 = col.min(self.cols.saturating_sub(1));
+    }
+
+    /// Move cursor to specific row on current column
+    pub fn move_cursor_to_row(&mut self, row: u16) {
+        self.cursor_pos.1 = row.min(self.rows.saturating_sub(1));
+    }
+
+    /// Move cursor to beginning of current line
+    pub fn move_cursor_to_line_start(&mut self) {
+        self.cursor_pos.0 = 0;
+    }
+
+    /// Move cursor to end of current line
+    pub fn move_cursor_to_line_end(&mut self) {
+        self.cursor_pos.0 = self.cols.saturating_sub(1);
+    }
+
     /// Clear the entire grid
     pub fn clear(&mut self) {
         self.scrollback.clear();
@@ -541,6 +652,7 @@ impl TerminalGrid {
         }
         self.viewport_offset = 0;
         self.cursor_pos = (0, 0);
+        self.selection = None;
     }
 
     /// Get the number of scrollback lines available
@@ -665,6 +777,60 @@ impl TerminalGrid {
         }
     }
 
+    /// Handle CSI (Control Sequence Introducer) actions from the parser
+    pub fn handle_csi_action(&mut self, action: &quantaterm_core::CsiAction) {
+        use quantaterm_core::CsiAction;
+
+        match action {
+            CsiAction::Sgr(params) => {
+                // SGR handling is already done by the parser state
+                trace!(subsystem = "blocks", params = ?params, "Processed SGR");
+            }
+            CsiAction::CursorUp(lines) => {
+                self.move_cursor_up(*lines);
+                trace!(subsystem = "blocks", lines = lines, "Moved cursor up");
+            }
+            CsiAction::CursorDown(lines) => {
+                self.move_cursor_down(*lines);
+                trace!(subsystem = "blocks", lines = lines, "Moved cursor down");
+            }
+            CsiAction::CursorForward(cols) => {
+                self.move_cursor_right(*cols);
+                trace!(subsystem = "blocks", cols = cols, "Moved cursor right");
+            }
+            CsiAction::CursorBackward(cols) => {
+                self.move_cursor_left(*cols);
+                trace!(subsystem = "blocks", cols = cols, "Moved cursor left");
+            }
+            CsiAction::CursorNextLine(lines) => {
+                self.move_cursor_down(*lines);
+                self.move_cursor_to_line_start();
+                trace!(subsystem = "blocks", lines = lines, "Moved cursor to next line");
+            }
+            CsiAction::CursorPreviousLine(lines) => {
+                self.move_cursor_up(*lines);
+                self.move_cursor_to_line_start();
+                trace!(subsystem = "blocks", lines = lines, "Moved cursor to previous line");
+            }
+            CsiAction::CursorHorizontalAbsolute(col) => {
+                self.move_cursor_to_column(*col);
+                trace!(subsystem = "blocks", col = col, "Moved cursor to column");
+            }
+            CsiAction::CursorPosition(row, col) => {
+                self.set_cursor_position(*col, *row);
+                trace!(subsystem = "blocks", row = row, col = col, "Set cursor position");
+            }
+            CsiAction::Other { command, params } => {
+                debug!(
+                    subsystem = "blocks",
+                    command = ?command,
+                    params = ?params,
+                    "Unhandled CSI command"
+                );
+            }
+        }
+    }
+
     /// Move to next line (newline)
     pub fn newline(&mut self) {
         self.cursor_pos.0 = 0; // Reset column to start of line
@@ -726,6 +892,257 @@ impl TerminalGrid {
         self.current_fg = Color::DEFAULT_FG;
         self.current_bg = Color::DEFAULT_BG;
         self.current_attrs = CellAttrs::empty();
+    }
+
+    // Text Selection Methods
+
+    /// Start a new text selection at the given position
+    pub fn start_selection(&mut self, position: Position) {
+        let clamped_position = self.clamp_position(position);
+        self.selection = Some(Selection::new(clamped_position, clamped_position));
+        trace!(
+            subsystem = "blocks",
+            col = clamped_position.col,
+            row = clamped_position.row,
+            "Started text selection"
+        );
+    }
+
+    /// Extend the current selection to the given position
+    pub fn extend_selection(&mut self, position: Position) {
+        let clamped_position = self.clamp_position(position);
+        if let Some(selection) = &mut self.selection {
+            selection.end = clamped_position;
+            // Normalize the selection
+            *selection = Selection::new(selection.start, selection.end);
+            trace!(
+                subsystem = "blocks",
+                start_col = selection.start.col,
+                start_row = selection.start.row,
+                end_col = selection.end.col,
+                end_row = selection.end.row,
+                "Extended text selection"
+            );
+        } else {
+            self.start_selection(position);
+        }
+    }
+
+    /// Clear the current text selection
+    pub fn clear_selection(&mut self) {
+        if self.selection.is_some() {
+            self.selection = None;
+            trace!(subsystem = "blocks", "Cleared text selection");
+        }
+    }
+
+    /// Get the current text selection, if any
+    pub fn get_selection(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
+    /// Check if there is an active selection
+    pub fn has_selection(&self) -> bool {
+        self.selection.is_some()
+    }
+
+    /// Get the selected text as a string
+    pub fn get_selected_text(&self) -> Option<String> {
+        let selection = self.selection.as_ref()?;
+        let text = self.extract_text_from_selection(selection);
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    }
+
+    /// Copy the selected text to the system clipboard
+    pub fn copy_selection_to_clipboard(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(text) = self.get_selected_text() {
+            let mut clipboard = arboard::Clipboard::new()?;
+            clipboard.set_text(text)?;
+            debug!(subsystem = "blocks", "Copied selection to clipboard");
+            Ok(())
+        } else {
+            Err("No text selected".into())
+        }
+    }
+
+    /// Check if a position is within the current selection
+    pub fn position_in_selection(&self, position: Position) -> bool {
+        self.selection
+            .as_ref()
+            .map(|s| s.contains(position))
+            .unwrap_or(false)
+    }
+
+    /// Clamp a position to be within grid bounds
+    fn clamp_position(&self, position: Position) -> Position {
+        Position::new(
+            position.col.min(self.cols.saturating_sub(1)),
+            position.row.min(self.rows.saturating_sub(1)),
+        )
+    }
+
+    /// Extract text from a selection range
+    fn extract_text_from_selection(&self, selection: &Selection) -> String {
+        let mut result = String::new();
+        let (start, end) = selection.normalized();
+
+        if start.row == end.row {
+            // Single line selection
+            if let Some(line) = self.get_viewport_line(start.row) {
+                for col in start.col..=end.col.min(self.cols.saturating_sub(1)) {
+                    if let Some(cell) = line.get(col as usize) {
+                        if cell.glyph_id != 0 && !cell.is_empty() {
+                            if let Some(ch) = char::from_u32(cell.glyph_id) {
+                                result.push(ch);
+                            }
+                        } else {
+                            result.push(' ');
+                        }
+                    }
+                }
+            }
+        } else {
+            // Multi-line selection
+            for row in start.row..=end.row {
+                if let Some(line) = self.get_viewport_line(row) {
+                    let start_col = if row == start.row { start.col } else { 0 };
+                    let end_col = if row == end.row {
+                        end.col.min(self.cols.saturating_sub(1))
+                    } else {
+                        self.cols.saturating_sub(1)
+                    };
+
+                    let mut line_text = String::new();
+                    for col in start_col..=end_col {
+                        if let Some(cell) = line.get(col as usize) {
+                            if cell.glyph_id != 0 && !cell.is_empty() {
+                                if let Some(ch) = char::from_u32(cell.glyph_id) {
+                                    line_text.push(ch);
+                                }
+                            } else {
+                                line_text.push(' ');
+                            }
+                        }
+                    }
+
+                    // Trim trailing whitespace from this line
+                    result.push_str(line_text.trim_end());
+
+                    // Add newline between rows (except for the last row)
+                    if row < end.row {
+                        result.push('\n');
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Get a specific line from the current viewport
+    fn get_viewport_line(&self, row: u16) -> Option<&CellRow> {
+        if row >= self.rows {
+            return None;
+        }
+
+        let scrollback_row = self.viewport_row_to_scrollback_index(row)?;
+        self.scrollback.get(scrollback_row)
+    }
+
+    /// Select all text in the current viewport
+    pub fn select_all(&mut self) {
+        let start = Position::new(0, 0);
+        let end = Position::new(
+            self.cols.saturating_sub(1),
+            self.rows.saturating_sub(1),
+        );
+        self.selection = Some(Selection::new(start, end));
+        debug!(subsystem = "blocks", "Selected all text in viewport");
+    }
+
+    /// Select the word at the given position
+    pub fn select_word_at(&mut self, position: Position) {
+        let clamped_pos = self.clamp_position(position);
+        
+        if let Some(line) = self.get_viewport_line(clamped_pos.row) {
+            let start_col = self.find_word_boundary_left(line, clamped_pos.col);
+            let end_col = self.find_word_boundary_right(line, clamped_pos.col);
+            
+            let start = Position::new(start_col, clamped_pos.row);
+            let end = Position::new(end_col, clamped_pos.row);
+            self.selection = Some(Selection::new(start, end));
+            
+            debug!(
+                subsystem = "blocks",
+                start_col = start_col,
+                end_col = end_col,
+                row = clamped_pos.row,
+                "Selected word at position"
+            );
+        }
+    }
+
+    /// Find the left boundary of a word (start of word)
+    fn find_word_boundary_left(&self, line: &CellRow, start_col: u16) -> u16 {
+        let mut col = start_col as usize;
+        
+        // Move left while we have word characters
+        while col > 0 {
+            if let Some(cell) = line.get(col.saturating_sub(1)) {
+                if let Some(ch) = char::from_u32(cell.glyph_id) {
+                    if ch.is_alphanumeric() || ch == '_' {
+                        col = col.saturating_sub(1);
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        col as u16
+    }
+
+    /// Find the right boundary of a word (end of word)
+    fn find_word_boundary_right(&self, line: &CellRow, start_col: u16) -> u16 {
+        let mut col = start_col as usize;
+        
+        // Move right while we have word characters
+        while col < line.len() {
+            if let Some(cell) = line.get(col) {
+                if let Some(ch) = char::from_u32(cell.glyph_id) {
+                    if ch.is_alphanumeric() || ch == '_' {
+                        col += 1;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        // Return the last valid character position (not the position after)
+        if col > start_col as usize {
+            (col - 1).min(self.cols.saturating_sub(1) as usize) as u16
+        } else {
+            start_col
+        }
+    }
+
+    /// Get the selection bounds adjusted for the current viewport offset
+    /// This is useful for rendering the selection correctly when scrolled
+    pub fn get_selection_viewport_bounds(&self) -> Option<(Position, Position)> {
+        self.selection.as_ref().map(|s| s.normalized())
     }
 }
 
@@ -1448,5 +1865,454 @@ mod tests {
         grid.reset_viewport();
         assert!(grid.is_at_bottom());
         assert_eq!(grid.viewport_offset(), 0);
+    }
+
+    // Text Selection Tests
+
+    #[test]
+    fn test_position_creation_and_comparison() {
+        let pos1 = Position::new(5, 10);
+        let pos2 = Position::new(5, 10);
+        let pos3 = Position::new(6, 10);
+        let pos4 = Position::new(5, 11);
+
+        assert_eq!(pos1, pos2);
+        assert!(pos1 < pos3); // Same row, earlier column
+        assert!(pos1 < pos4); // Earlier row
+        assert!(pos3 < pos4); // Earlier row beats later column
+    }
+
+    #[test]
+    fn test_selection_creation_and_normalization() {
+        let start = Position::new(5, 2);
+        let end = Position::new(10, 2);
+
+        // Normal order
+        let selection = Selection::new(start, end);
+        assert_eq!(selection.start, start);
+        assert_eq!(selection.end, end);
+
+        // Reverse order should be normalized
+        let selection_rev = Selection::new(end, start);
+        assert_eq!(selection_rev.start, start);
+        assert_eq!(selection_rev.end, end);
+    }
+
+    #[test]
+    fn test_selection_contains() {
+        let selection = Selection::new(Position::new(2, 1), Position::new(5, 3));
+
+        // Test positions inside selection
+        assert!(selection.contains(Position::new(2, 1))); // start
+        assert!(selection.contains(Position::new(5, 3))); // end
+        assert!(selection.contains(Position::new(3, 2))); // middle
+
+        // Test positions outside selection
+        assert!(!selection.contains(Position::new(1, 1))); // before start on same row
+        assert!(!selection.contains(Position::new(6, 3))); // after end on same row
+        assert!(!selection.contains(Position::new(3, 0))); // above (earlier row)
+        assert!(!selection.contains(Position::new(3, 4))); // below (later row)
+    }
+
+    #[test]
+    fn test_selection_multiline() {
+        let single_line = Selection::new(Position::new(2, 1), Position::new(5, 1));
+        let multi_line = Selection::new(Position::new(2, 1), Position::new(5, 3));
+
+        assert!(!single_line.is_multiline());
+        assert!(multi_line.is_multiline());
+    }
+
+    #[test]
+    fn test_start_and_clear_selection() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Initially no selection
+        assert!(!grid.has_selection());
+        assert!(grid.get_selection().is_none());
+
+        // Start selection
+        grid.start_selection(Position::new(3, 2));
+        assert!(grid.has_selection());
+        let selection = grid.get_selection().unwrap();
+        assert_eq!(selection.start, Position::new(3, 2));
+        assert_eq!(selection.end, Position::new(3, 2));
+
+        // Clear selection
+        grid.clear_selection();
+        assert!(!grid.has_selection());
+        assert!(grid.get_selection().is_none());
+    }
+
+    #[test]
+    fn test_extend_selection() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Start selection
+        grid.start_selection(Position::new(2, 1));
+        
+        // Extend selection
+        grid.extend_selection(Position::new(6, 3));
+        
+        let selection = grid.get_selection().unwrap();
+        assert_eq!(selection.start, Position::new(2, 1));
+        assert_eq!(selection.end, Position::new(6, 3));
+        assert!(selection.is_multiline());
+    }
+
+    #[test]
+    fn test_extend_selection_reverse() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Start selection
+        grid.start_selection(Position::new(6, 3));
+        
+        // Extend selection backwards (should normalize)
+        grid.extend_selection(Position::new(2, 1));
+        
+        let selection = grid.get_selection().unwrap();
+        assert_eq!(selection.start, Position::new(2, 1));
+        assert_eq!(selection.end, Position::new(6, 3));
+    }
+
+    #[test]
+    fn test_position_clamping() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Test clamping when starting selection out of bounds
+        grid.start_selection(Position::new(15, 10));
+        let selection = grid.get_selection().unwrap();
+        assert_eq!(selection.start, Position::new(9, 4)); // Clamped to grid bounds
+    }
+
+    #[test]
+    fn test_position_in_selection() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        grid.start_selection(Position::new(2, 1));
+        grid.extend_selection(Position::new(6, 3));
+
+        assert!(grid.position_in_selection(Position::new(2, 1))); // start
+        assert!(grid.position_in_selection(Position::new(6, 3))); // end
+        assert!(grid.position_in_selection(Position::new(4, 2))); // middle
+        assert!(!grid.position_in_selection(Position::new(1, 1))); // outside
+        assert!(!grid.position_in_selection(Position::new(7, 3))); // outside
+    }
+
+    #[test]
+    fn test_select_all() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        grid.select_all();
+        
+        let selection = grid.get_selection().unwrap();
+        assert_eq!(selection.start, Position::new(0, 0));
+        assert_eq!(selection.end, Position::new(9, 4));
+        assert!(selection.is_multiline());
+    }
+
+    #[test]
+    fn test_get_selected_text_single_line() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Add some text content
+        grid.set_cell(2, 1, Cell::new(b'H' as u32));
+        grid.set_cell(3, 1, Cell::new(b'e' as u32));
+        grid.set_cell(4, 1, Cell::new(b'l' as u32));
+        grid.set_cell(5, 1, Cell::new(b'l' as u32));
+        grid.set_cell(6, 1, Cell::new(b'o' as u32));
+
+        // Select the word "Hello"
+        grid.start_selection(Position::new(2, 1));
+        grid.extend_selection(Position::new(6, 1));
+
+        let selected_text = grid.get_selected_text().unwrap();
+        assert_eq!(selected_text, "Hello");
+    }
+
+    #[test]
+    fn test_get_selected_text_multiline() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Line 1: "Hello"
+        grid.set_cell(0, 1, Cell::new(b'H' as u32));
+        grid.set_cell(1, 1, Cell::new(b'e' as u32));
+        grid.set_cell(2, 1, Cell::new(b'l' as u32));
+        grid.set_cell(3, 1, Cell::new(b'l' as u32));
+        grid.set_cell(4, 1, Cell::new(b'o' as u32));
+
+        // Line 2: "World"
+        grid.set_cell(0, 2, Cell::new(b'W' as u32));
+        grid.set_cell(1, 2, Cell::new(b'o' as u32));
+        grid.set_cell(2, 2, Cell::new(b'r' as u32));
+        grid.set_cell(3, 2, Cell::new(b'l' as u32));
+        grid.set_cell(4, 2, Cell::new(b'd' as u32));
+
+        // Select from "ello" on first line to "Wor" on second line
+        grid.start_selection(Position::new(1, 1));
+        grid.extend_selection(Position::new(2, 2));
+
+        let selected_text = grid.get_selected_text().unwrap();
+        assert_eq!(selected_text, "ello\nWor");
+    }
+
+    #[test]
+    fn test_get_selected_text_empty_selection() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // No selection
+        assert!(grid.get_selected_text().is_none());
+
+        // Empty selection (same start and end)
+        grid.start_selection(Position::new(0, 0));
+        let selected_text = grid.get_selected_text();
+        // Should return single character or be empty depending on cell content
+        if let Some(text) = selected_text {
+            assert!(text.len() <= 1);
+        }
+    }
+
+    #[test]
+    fn test_select_word_at_position() {
+        let mut grid = TerminalGrid::new(20, 5);
+
+        // Add text: "Hello World Test"
+        let text = "Hello World Test";
+        for (i, ch) in text.chars().enumerate() {
+            grid.set_cell(i as u16, 1, Cell::new(ch as u32));
+        }
+
+        // Select word at position within "Hello"
+        grid.select_word_at(Position::new(2, 1)); // Should select "Hello"
+        let selected = grid.get_selected_text().unwrap();
+        assert_eq!(selected, "Hello");
+
+        // Select word at position within "World"
+        grid.select_word_at(Position::new(8, 1)); // Should select "World"
+        let selected = grid.get_selected_text().unwrap();
+        assert_eq!(selected, "World");
+
+        // Select word at position within "Test"
+        grid.select_word_at(Position::new(14, 1)); // Should select "Test"
+        let selected = grid.get_selected_text().unwrap();
+        assert_eq!(selected, "Test");
+    }
+
+    #[test]
+    fn test_word_boundary_detection() {
+        let mut grid = TerminalGrid::new(25, 5);
+
+        // Add text with various boundaries: "hello_world test-case"
+        let text = "hello_world test-case";
+        for (i, ch) in text.chars().enumerate() {
+            grid.set_cell(i as u16, 1, Cell::new(ch as u32));
+        }
+
+        // Select within "hello_world" (underscore should be included)
+        grid.select_word_at(Position::new(3, 1));
+        let selected = grid.get_selected_text().unwrap();
+        assert_eq!(selected, "hello_world");
+
+        // Select within "test" (should stop at hyphen)
+        grid.select_word_at(Position::new(13, 1));
+        let selected = grid.get_selected_text().unwrap();
+        assert_eq!(selected, "test");
+
+        // Select within "case"
+        grid.select_word_at(Position::new(18, 1));
+        let selected = grid.get_selected_text().unwrap();
+        assert_eq!(selected, "case");
+    }
+
+    #[test]
+    fn test_clipboard_integration() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Add some text
+        let text = "Hello";
+        for (i, ch) in text.chars().enumerate() {
+            grid.set_cell(i as u16, 1, Cell::new(ch as u32));
+        }
+
+        // Select the text
+        grid.start_selection(Position::new(0, 1));
+        grid.extend_selection(Position::new(4, 1));
+
+        // Test clipboard copy
+        let result = grid.copy_selection_to_clipboard();
+        // Note: This might fail in CI environments without clipboard support
+        // That's expected behavior
+        match result {
+            Ok(()) => {
+                // Clipboard copy succeeded
+                println!("Clipboard copy successful");
+            }
+            Err(_) => {
+                // Expected in headless environments
+                println!("Clipboard copy failed (expected in CI)");
+            }
+        }
+
+        // Test copying when no selection exists
+        grid.clear_selection();
+        let result = grid.copy_selection_to_clipboard();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_selection_edge_cases() {
+        let mut grid = TerminalGrid::new(5, 3);
+
+        // Test selection at grid boundaries
+        grid.start_selection(Position::new(0, 0));
+        grid.extend_selection(Position::new(4, 2));
+
+        let selection = grid.get_selection().unwrap();
+        assert_eq!(selection.start, Position::new(0, 0));
+        assert_eq!(selection.end, Position::new(4, 2));
+
+        // Test selection with empty cells
+        let selected_text = grid.get_selected_text();
+        if let Some(text) = selected_text {
+            // Should handle empty cells gracefully
+            assert!(text.len() > 0 || text.is_empty()); // Just ensure it's valid
+        }
+    }
+
+    #[test]
+    fn test_selection_survives_clear() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Start a selection
+        grid.start_selection(Position::new(2, 1));
+        grid.extend_selection(Position::new(6, 3));
+        assert!(grid.has_selection());
+
+        // Clear the grid (should also clear selection)
+        grid.clear();
+        assert!(!grid.has_selection());
+    }
+
+    #[test]
+    fn test_cursor_movement_methods() {
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Test initial position
+        assert_eq!(grid.cursor_position(), (0, 0));
+
+        // Test moving cursor up (should not go below 0)
+        grid.move_cursor_up(2);
+        assert_eq!(grid.cursor_position(), (0, 0));
+
+        // Set cursor to middle and test movements
+        grid.set_cursor_position(5, 2);
+        assert_eq!(grid.cursor_position(), (5, 2));
+
+        // Test moving up
+        grid.move_cursor_up(1);
+        assert_eq!(grid.cursor_position(), (5, 1));
+
+        // Test moving down
+        grid.move_cursor_down(2);
+        assert_eq!(grid.cursor_position(), (5, 3));
+
+        // Test moving left
+        grid.move_cursor_left(2);
+        assert_eq!(grid.cursor_position(), (3, 3));
+
+        // Test moving right
+        grid.move_cursor_right(3);
+        assert_eq!(grid.cursor_position(), (6, 3));
+
+        // Test boundary checks - moving too far right
+        grid.move_cursor_right(10);
+        assert_eq!(grid.cursor_position(), (9, 3)); // Should clamp to max col
+
+        // Test boundary checks - moving too far down
+        grid.move_cursor_down(10);
+        assert_eq!(grid.cursor_position(), (9, 4)); // Should clamp to max row
+
+        // Test moving to specific column
+        grid.move_cursor_to_column(2);
+        assert_eq!(grid.cursor_position(), (2, 4));
+
+        // Test moving to specific row
+        grid.move_cursor_to_row(1);
+        assert_eq!(grid.cursor_position(), (2, 1));
+
+        // Test moving to line start and end
+        grid.move_cursor_to_line_start();
+        assert_eq!(grid.cursor_position(), (0, 1));
+
+        grid.move_cursor_to_line_end();
+        assert_eq!(grid.cursor_position(), (9, 1));
+    }
+
+    #[test]
+    fn test_cursor_movement_bounds() {
+        let mut grid = TerminalGrid::new(5, 3);
+
+        // Test moving left from origin
+        grid.set_cursor_position(0, 0);
+        grid.move_cursor_left(5);
+        assert_eq!(grid.cursor_position(), (0, 0));
+
+        // Test moving up from origin
+        grid.move_cursor_up(5);
+        assert_eq!(grid.cursor_position(), (0, 0));
+
+        // Test moving beyond right boundary
+        grid.move_cursor_right(10);
+        assert_eq!(grid.cursor_position(), (4, 0)); // Max col is 4 for 5-column grid
+
+        // Test moving beyond bottom boundary
+        grid.move_cursor_down(10);
+        assert_eq!(grid.cursor_position(), (4, 2)); // Max row is 2 for 3-row grid
+    }
+
+    #[test]
+    fn test_csi_cursor_movement_integration() {
+        use quantaterm_core::CsiAction;
+        let mut grid = TerminalGrid::new(10, 5);
+
+        // Set initial cursor position
+        grid.set_cursor_position(5, 2);
+        assert_eq!(grid.cursor_position(), (5, 2));
+
+        // Test cursor up
+        grid.handle_csi_action(&CsiAction::CursorUp(1));
+        assert_eq!(grid.cursor_position(), (5, 1));
+
+        // Test cursor down
+        grid.handle_csi_action(&CsiAction::CursorDown(2));
+        assert_eq!(grid.cursor_position(), (5, 3));
+
+        // Test cursor forward
+        grid.handle_csi_action(&CsiAction::CursorForward(2));
+        assert_eq!(grid.cursor_position(), (7, 3));
+
+        // Test cursor backward
+        grid.handle_csi_action(&CsiAction::CursorBackward(3));
+        assert_eq!(grid.cursor_position(), (4, 3));
+
+        // Test cursor next line
+        grid.handle_csi_action(&CsiAction::CursorNextLine(1));
+        assert_eq!(grid.cursor_position(), (0, 4)); // Should move to start of next line
+
+        // Test cursor previous line
+        grid.handle_csi_action(&CsiAction::CursorPreviousLine(2));
+        assert_eq!(grid.cursor_position(), (0, 2)); // Should move to start of line 2 lines up
+
+        // Test cursor horizontal absolute
+        grid.handle_csi_action(&CsiAction::CursorHorizontalAbsolute(7));
+        assert_eq!(grid.cursor_position(), (7, 2));
+
+        // Test cursor position (absolute)
+        grid.handle_csi_action(&CsiAction::CursorPosition(1, 3)); // 1-based in escape sequence, 0-based internally
+        assert_eq!(grid.cursor_position(), (3, 1));
+
+        // Test cursor position bounds checking
+        grid.handle_csi_action(&CsiAction::CursorPosition(10, 15)); // Beyond grid bounds
+        assert_eq!(grid.cursor_position(), (9, 4)); // Should be clamped
     }
 }

@@ -42,6 +42,9 @@ wgpu = "26.0"
 # Async runtime for window events
 pollster = "0.3"
 
+# Clipboard support
+arboard = "3.4"
+
 [profile.dev]
 opt-level = 0
 debug = true
