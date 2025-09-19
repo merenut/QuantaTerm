@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, trace, warn, instrument};
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -27,21 +27,30 @@ pub struct Renderer {
 
 impl Renderer {
     /// Create a new renderer instance
+    #[instrument(name = "renderer_new", skip(window))]
     pub async fn new(window: Arc<Window>) -> Result<Self> {
-        info!("Initializing wgpu renderer");
-
         let size = window.inner_size();
+        info!(
+            subsystem = "renderer",
+            width = size.width,
+            height = size.height,
+            "Initializing wgpu renderer"
+        );
 
         // Create wgpu instance
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
+        
+        debug!(subsystem = "renderer", "Created wgpu instance");
 
         // Create surface
         let surface = instance
             .create_surface(window.clone())
             .context("Failed to create surface")?;
+        
+        debug!(subsystem = "renderer", "Created surface");
 
         // Request adapter
         let adapter = instance
@@ -53,13 +62,20 @@ impl Renderer {
             .await
             .context("Failed to find an appropriate adapter")?;
 
-        debug!("Using adapter: {:?}", adapter.get_info());
+        debug!(
+            subsystem = "renderer",
+            adapter_name = ?adapter.get_info().name,
+            adapter_backend = ?adapter.get_info().backend,
+            "Using GPU adapter"
+        );
 
         // Request device and queue
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .context("Failed to create device")?;
+        
+        debug!(subsystem = "renderer", "Created device and queue");
 
         // Configure surface
         let surface_caps = surface.get_capabilities(&adapter);
@@ -82,8 +98,18 @@ impl Renderer {
         };
 
         surface.configure(&device, &config);
+        
+        trace!(
+            subsystem = "renderer",
+            surface_format = ?surface_format,
+            "Configured surface"
+        );
 
-        info!("Renderer initialized successfully");
+        info!(
+            subsystem = "renderer",
+            surface_format = ?surface_format,
+            "Renderer initialization complete"
+        );
 
         Ok(Self {
             _instance: instance,
@@ -103,13 +129,26 @@ impl Renderer {
     }
 
     /// Resize the renderer to match window size
+    #[instrument(name = "renderer_resize", skip(self))]
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            debug!("Renderer resized to {:?}", new_size);
+            debug!(
+                subsystem = "renderer",
+                width = new_size.width,
+                height = new_size.height,
+                "Renderer resized"
+            );
+        } else {
+            warn!(
+                subsystem = "renderer",
+                width = new_size.width,
+                height = new_size.height,
+                "Ignoring invalid resize request"
+            );
         }
     }
 
@@ -157,18 +196,34 @@ impl Renderer {
     }
 
     /// Add text to the terminal buffer and update display
+    #[instrument(name = "renderer_add_text", skip(self))]
     pub fn add_text(&mut self, text: &str) {
         // Split text into lines and add to buffer
-        for line in text.lines() {
-            if !line.trim().is_empty() {
-                self.text_buffer.push(line.to_string());
-                debug!("Added text to renderer buffer: {}", line);
-            }
-        }
+        let new_lines: Vec<_> = text.lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.to_string())
+            .collect();
+        
+        let line_count = new_lines.len();
+        self.text_buffer.extend(new_lines);
+        
+        debug!(
+            subsystem = "renderer",
+            line_count = line_count,
+            total_buffer_size = self.text_buffer.len(),
+            "Added text to renderer buffer"
+        );
 
         // Keep only the last 100 lines to prevent memory growth
         if self.text_buffer.len() > 100 {
-            self.text_buffer.drain(0..self.text_buffer.len() - 100);
+            let removed_count = self.text_buffer.len() - 100;
+            self.text_buffer.drain(0..removed_count);
+            trace!(
+                subsystem = "renderer",
+                removed_lines = removed_count,
+                remaining_lines = self.text_buffer.len(),
+                "Trimmed text buffer to prevent memory growth"
+            );
         }
 
         // Change background color slightly when we have output to show visual feedback

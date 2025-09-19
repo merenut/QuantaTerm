@@ -11,7 +11,7 @@ pub enum QuantaTermError {
 
     /// Configuration error
     #[error("Configuration error: {0}")]
-    Config(String),
+    Configuration(String),
 
     /// Rendering error
     #[error("Rendering error: {0}")]

@@ -3,6 +3,7 @@
 //! Main application entry point for QuantaTerm terminal emulator.
 
 use anyhow::{Context, Result};
+use quantaterm_core::logging::{self, dev_config};
 use tracing::info;
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -12,10 +13,16 @@ use app::QuantaTermApp;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
+    // Initialize structured logging with development configuration
+    let logging_config = dev_config();
+    logging::init_logging(&logging_config)
+        .context("Failed to initialize logging")?;
 
-    info!("Starting QuantaTerm v{}", quantaterm_core::VERSION);
+    info!(
+        version = quantaterm_core::VERSION,
+        config = ?logging_config,
+        "Starting QuantaTerm"
+    );
 
     // Create event loop
     let event_loop = EventLoop::new().context("Failed to create event loop")?;
