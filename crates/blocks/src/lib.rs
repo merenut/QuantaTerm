@@ -151,6 +151,12 @@ pub struct TerminalGrid {
     max_scrollback: usize,
     /// Current cursor position (col, row)
     cursor_pos: (u16, u16),
+    /// Current formatting state for new cells
+    current_fg: Color,
+    /// Current background formatting state for new cells  
+    current_bg: Color,
+    /// Current attributes for new cells
+    current_attrs: CellAttrs,
 }
 
 impl TerminalGrid {
@@ -168,6 +174,9 @@ impl TerminalGrid {
             viewport_offset: 0,
             max_scrollback,
             cursor_pos: (0, 0),
+            current_fg: Color::DEFAULT_FG,
+            current_bg: Color::DEFAULT_BG,
+            current_attrs: CellAttrs::empty(),
         };
 
         // Initialize with empty rows
@@ -523,6 +532,116 @@ impl TerminalGrid {
         let combined_text = text_lines.join("\n");
         renderer.add_text(&combined_text);
     }
+
+    /// Apply SGR (Select Graphic Rendition) formatting attributes
+    /// This updates the current formatting state for new cells
+    pub fn apply_sgr(&mut self, fg_color: Color, bg_color: Color, attrs: CellAttrs) {
+        self.current_fg = fg_color;
+        self.current_bg = bg_color;
+        self.current_attrs = attrs;
+        
+        debug!(
+            subsystem = "blocks",
+            fg_r = fg_color.r, fg_g = fg_color.g, fg_b = fg_color.b,
+            bg_r = bg_color.r, bg_g = bg_color.g, bg_b = bg_color.b,
+            attrs = ?attrs,
+            "Applied SGR formatting"
+        );
+    }
+
+    /// Print a character at the cursor position with current formatting
+    pub fn print_char(&mut self, c: char) {
+        let glyph_id = c as u32;
+        
+        // Create cell with current formatting
+        let cell = Cell {
+            glyph_id,
+            fg_color: self.current_fg,
+            bg_color: self.current_bg,
+            attrs: self.current_attrs,
+        };
+
+        // Set cell at cursor position
+        self.set_cell(self.cursor_pos.0, self.cursor_pos.1, cell);
+        
+        // Advance cursor
+        self.advance_cursor();
+    }
+
+    /// Execute a control character (like newline, tab, etc.)
+    pub fn execute_control(&mut self, byte: u8) {
+        match byte {
+            b'\n' => self.newline(),
+            b'\r' => self.carriage_return(), 
+            b'\t' => self.tab(),
+            b'\x08' => self.backspace(), // Backspace
+            _ => {
+                trace!("Unhandled control character: {:#x}", byte);
+            }
+        }
+    }
+
+    /// Move to next line (newline)
+    pub fn newline(&mut self) {
+        self.cursor_pos.0 = 0;  // Reset column to start of line
+        self.cursor_pos.1 += 1;
+        if self.cursor_pos.1 >= self.rows {
+            // Need to scroll
+            self.scroll_up_one_line();
+            self.cursor_pos.1 = self.rows - 1;
+        }
+    }
+
+    /// Move cursor to start of current line (carriage return)
+    pub fn carriage_return(&mut self) {
+        self.cursor_pos.0 = 0;
+    }
+
+    /// Move cursor to next tab stop
+    pub fn tab(&mut self) {
+        // Simple tab implementation - move to next multiple of 8
+        self.cursor_pos.0 = ((self.cursor_pos.0 / 8) + 1) * 8;
+        if self.cursor_pos.0 >= self.cols {
+            self.cursor_pos.0 = self.cols - 1;
+        }
+    }
+
+    /// Move cursor back one position
+    pub fn backspace(&mut self) {
+        if self.cursor_pos.0 > 0 {
+            self.cursor_pos.0 -= 1;
+        }
+    }
+
+    /// Advance cursor to next position
+    fn advance_cursor(&mut self) {
+        self.cursor_pos.0 += 1;
+        if self.cursor_pos.0 >= self.cols {
+            // Wrap to next line
+            self.cursor_pos.0 = 0;
+            self.newline();
+        }
+    }
+
+    /// Scroll the terminal up by one line
+    fn scroll_up_one_line(&mut self) {
+        if self.scrollback.len() >= self.max_scrollback {
+            self.scrollback.pop_front();
+        }
+        self.scrollback.push_back(vec![Cell::empty(); self.cols as usize]);
+    }
+
+    /// Get current formatting state
+    pub fn current_formatting(&self) -> (Color, Color, CellAttrs) {
+        (self.current_fg, self.current_bg, self.current_attrs)
+    }
+
+    /// Reset formatting to defaults
+    pub fn reset_formatting(&mut self) {
+        self.current_fg = Color::DEFAULT_FG;
+        self.current_bg = Color::DEFAULT_BG;
+        self.current_attrs = CellAttrs::empty();
+    }
 }
 
 /// Placeholder module for blocks (maintaining backwards compatibility)
@@ -794,6 +913,88 @@ mod tests {
         assert_eq!(viewport[1].len(), 5);
         assert_eq!(viewport[1][0].glyph_id, b'A' as u32);
         assert_eq!(viewport[1][4].glyph_id, b'E' as u32);
+    }
+
+    #[test]
+    fn test_sgr_formatting() {
+        let mut grid = TerminalGrid::new(10, 5);
+        
+        // Test default formatting
+        let (fg, bg, attrs) = grid.current_formatting();
+        assert_eq!(fg, Color::DEFAULT_FG);
+        assert_eq!(bg, Color::DEFAULT_BG);
+        assert!(attrs.is_empty());
+        
+        // Apply bold red formatting
+        grid.apply_sgr(Color::rgb(255, 0, 0), Color::DEFAULT_BG, CellAttrs::BOLD);
+        let (fg, bg, attrs) = grid.current_formatting();
+        assert_eq!(fg, Color::rgb(255, 0, 0));
+        assert_eq!(bg, Color::DEFAULT_BG);
+        assert!(attrs.contains(CellAttrs::BOLD));
+        
+        // Print a character with formatting
+        grid.print_char('A');
+        let cell = grid.get_cell(0, 0).unwrap();
+        assert_eq!(cell.glyph_id, b'A' as u32);
+        assert_eq!(cell.fg_color, Color::rgb(255, 0, 0));
+        assert!(cell.attrs.contains(CellAttrs::BOLD));
+        
+        // Reset formatting
+        grid.reset_formatting();
+        let (fg, bg, attrs) = grid.current_formatting();
+        assert_eq!(fg, Color::DEFAULT_FG);
+        assert_eq!(bg, Color::DEFAULT_BG);
+        assert!(attrs.is_empty());
+    }
+
+    #[test]
+    fn test_control_characters() {
+        let mut grid = TerminalGrid::new(10, 5);
+        
+        // Test printing and cursor advancement
+        grid.print_char('H');
+        grid.print_char('i');
+        assert_eq!(grid.cursor_position(), (2, 0));
+        
+        // Test carriage return
+        grid.execute_control(b'\r');
+        assert_eq!(grid.cursor_position(), (0, 0));
+        
+        // Test newline
+        grid.execute_control(b'\n');
+        assert_eq!(grid.cursor_position(), (0, 1));
+        
+        // Test tab
+        grid.execute_control(b'\t');
+        assert_eq!(grid.cursor_position(), (8, 1));
+        
+        // Test backspace
+        grid.execute_control(b'\x08');
+        assert_eq!(grid.cursor_position(), (7, 1));
+    }
+
+    #[test]
+    fn test_line_wrapping_with_formatting() {
+        let mut grid = TerminalGrid::new(3, 3);
+        
+        // Apply formatting
+        grid.apply_sgr(Color::rgb(0, 255, 0), Color::DEFAULT_BG, CellAttrs::ITALIC);
+        
+        // Print characters that will wrap
+        grid.print_char('A');
+        grid.print_char('B');
+        grid.print_char('C');
+        grid.print_char('D'); // Should wrap to next line
+        
+        assert_eq!(grid.cursor_position(), (1, 1));
+        
+        // Check that formatting is preserved across wrapping
+        let cell_a = grid.get_cell(0, 0).unwrap();
+        let cell_d = grid.get_cell(0, 1).unwrap();
+        assert_eq!(cell_a.fg_color, Color::rgb(0, 255, 0));
+        assert_eq!(cell_d.fg_color, Color::rgb(0, 255, 0));
+        assert!(cell_a.attrs.contains(CellAttrs::ITALIC));
+        assert!(cell_d.attrs.contains(CellAttrs::ITALIC));
     }
 
     #[test] 

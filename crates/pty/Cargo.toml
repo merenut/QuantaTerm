@@ -9,8 +9,10 @@ repository.workspace = true
 
 [dependencies]
 quantaterm-core = { path = "../core" }
+quantaterm-blocks = { path = "../blocks" }
 thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 portable-pty = "0.8"
+vte = "0.15"

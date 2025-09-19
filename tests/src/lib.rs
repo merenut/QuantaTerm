@@ -1,6 +1,9 @@
-//! Integration tests for logging infrastructure
+//! Integration tests for QuantaTerm
 
-use quantaterm_core::logging::{self, ci_config, dev_config, prod_config, LogLevel};
+use quantaterm_core::logging::{ci_config, dev_config, prod_config, LogLevel};
+
+pub mod sgr_integration;
+pub mod vttest_subset;
 
 #[test]
 fn test_logging_configurations() {

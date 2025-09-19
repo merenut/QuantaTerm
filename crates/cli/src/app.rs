@@ -182,6 +182,11 @@ impl QuantaTermApp {
                             debug!("Shell output (binary): {} bytes", data.len());
                         }
                     }
+                    PtyEvent::ParsedActions(_actions) => {
+                        // TODO: Apply parsed actions to terminal grid
+                        // For now, we just use the raw data above
+                        debug!("Received parsed terminal actions");
+                    }
                     PtyEvent::ProcessExit(code) => {
                         info!("Shell process exited with code: {}", code);
                         
