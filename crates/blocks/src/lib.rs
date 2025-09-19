@@ -7,6 +7,7 @@
 
 use std::collections::VecDeque;
 use bitflags::bitflags;
+use tracing::{debug, trace, warn, instrument};
 
 /// A color representation for terminal cells
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,9 +179,19 @@ impl TerminalGrid {
     }
 
     /// Resize the terminal grid
+    #[instrument(name = "grid_resize", skip(self))]
     pub fn resize(&mut self, new_cols: u16, new_rows: u16) {
         let old_cols = self.cols;
         let old_rows = self.rows;
+        
+        debug!(
+            subsystem = "blocks",
+            old_cols = old_cols,
+            old_rows = old_rows,
+            new_cols = new_cols,
+            new_rows = new_rows,
+            "Resizing terminal grid"
+        );
         
         self.cols = new_cols;
         self.rows = new_rows;
@@ -189,6 +200,12 @@ impl TerminalGrid {
         if new_cols != old_cols {
             if new_cols > old_cols {
                 // Expand rows with empty cells
+                trace!(
+                    subsystem = "blocks",
+                    old_cols = old_cols,
+                    new_cols = new_cols,
+                    "Expanding grid columns"
+                );
                 for row in &mut self.scrollback {
                     row.resize(new_cols as usize, Cell::empty());
                 }
@@ -200,8 +217,20 @@ impl TerminalGrid {
                 });
                 
                 if needs_rewrapping {
+                    debug!(
+                        subsystem = "blocks",
+                        old_cols = old_cols,
+                        new_cols = new_cols,
+                        "Rewrapping lines due to content beyond new width"
+                    );
                     self.rewrap_lines(old_cols, new_cols);
                 } else {
+                    trace!(
+                        subsystem = "blocks",
+                        old_cols = old_cols,
+                        new_cols = new_cols,
+                        "Truncating columns without rewrapping"
+                    );
                     // Just truncate rows since no content would be lost
                     for row in &mut self.scrollback {
                         row.truncate(new_cols as usize);
@@ -335,25 +364,67 @@ impl TerminalGrid {
     }
 
     /// Scroll the viewport up by the given number of lines
+    #[instrument(name = "grid_scroll_up", skip(self))]
     pub fn scroll_up(&mut self, lines: usize) {
         let max_offset = self.scrollback.len().saturating_sub(self.rows as usize);
+        let old_offset = self.viewport_offset;
         self.viewport_offset = (self.viewport_offset + lines).min(max_offset);
+        
+        if old_offset != self.viewport_offset {
+            trace!(
+                subsystem = "blocks",
+                lines = lines,
+                old_offset = old_offset,
+                new_offset = self.viewport_offset,
+                "Scrolled viewport up"
+            );
+        }
     }
 
     /// Scroll the viewport down by the given number of lines
+    #[instrument(name = "grid_scroll_down", skip(self))]
     pub fn scroll_down(&mut self, lines: usize) {
+        let old_offset = self.viewport_offset;
         self.viewport_offset = self.viewport_offset.saturating_sub(lines);
+        
+        if old_offset != self.viewport_offset {
+            trace!(
+                subsystem = "blocks",
+                lines = lines,
+                old_offset = old_offset,
+                new_offset = self.viewport_offset,
+                "Scrolled viewport down"
+            );
+        }
     }
 
     /// Reset viewport to show the bottom of the scrollback (normal terminal view)
+    #[instrument(name = "grid_reset_viewport", skip(self))]
     pub fn reset_viewport(&mut self) {
+        let old_offset = self.viewport_offset;
         self.viewport_offset = 0;
+        
+        if old_offset != 0 {
+            trace!(
+                subsystem = "blocks",
+                old_offset = old_offset,
+                "Reset viewport to bottom"
+            );
+        }
     }
 
     /// Add a new line at the bottom, scrolling content up
+    #[instrument(name = "grid_add_line", skip(self, line))]
     pub fn add_line(&mut self, line: CellRow) {
         let mut line = line;
         line.resize(self.cols as usize, Cell::empty());
+        
+        trace!(
+            subsystem = "blocks",
+            line_cells = line.len(),
+            total_scrollback = self.scrollback.len(),
+            "Adding line to terminal grid"
+        );
         
         self.scrollback.push_back(line);
         self.limit_scrollback();
@@ -365,8 +436,19 @@ impl TerminalGrid {
     /// Limit scrollback to maximum size
     fn limit_scrollback(&mut self) {
         let target_size = self.max_scrollback + self.rows as usize;
-        while self.scrollback.len() > target_size {
-            self.scrollback.pop_front();
+        let removed_count = self.scrollback.len().saturating_sub(target_size);
+        
+        if removed_count > 0 {
+            for _ in 0..removed_count {
+                self.scrollback.pop_front();
+            }
+            trace!(
+                subsystem = "blocks",
+                removed_lines = removed_count,
+                remaining_lines = self.scrollback.len(),
+                target_size = target_size,
+                "Limited scrollback buffer size"
+            );
         }
     }
 

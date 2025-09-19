@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, PtySize};
 use std::io::{BufRead, BufReader, Write};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, instrument, trace};
 
 /// Events from the PTY that need to be handled by the application
 #[derive(Debug, Clone)]
@@ -56,8 +56,14 @@ impl Pty {
     }
 
     /// Start the shell and PTY communication
+    #[instrument(name = "pty_start_shell", skip(self))]
     pub async fn start_shell(&mut self, width: u16, height: u16) -> Result<()> {
-        info!("Starting shell session ({}x{})", width, height);
+        info!(
+            subsystem = "pty",
+            width = width,
+            height = height,
+            "Starting shell session"
+        );
 
         // Create channels for communication
         let (command_tx, command_rx) = mpsc::unbounded_channel();
@@ -69,11 +75,15 @@ impl Pty {
         // Spawn the PTY task
         tokio::spawn(async move {
             if let Err(e) = Self::pty_task(command_rx, event_tx, width, height).await {
-                error!("PTY task failed: {}", e);
+                error!(
+                    subsystem = "pty",
+                    error = %e,
+                    "PTY task failed"
+                );
             }
         });
 
-        info!("Shell session started successfully");
+        info!(subsystem = "pty", "Shell session started successfully");
         Ok(())
     }
 
@@ -107,20 +117,32 @@ impl Pty {
     }
 
     /// Write data to the shell's stdin
+    #[instrument(name = "pty_write_data", skip(self, data))]
     pub fn write_data(&self, data: &[u8]) -> Result<()> {
-        debug!("Writing {} bytes to shell", data.len());
+        debug!(
+            subsystem = "pty",
+            byte_count = data.len(),
+            "Writing data to shell"
+        );
         self.send_command(PtyCommand::WriteData(data.to_vec()))
     }
 
     /// Resize the PTY
+    #[instrument(name = "pty_resize", skip(self))]
     pub fn resize(&self, width: u16, height: u16) -> Result<()> {
-        debug!("Resizing PTY to {}x{}", width, height);
+        debug!(
+            subsystem = "pty",
+            width = width,
+            height = height,
+            "Resizing PTY"
+        );
         self.send_command(PtyCommand::Resize { width, height })
     }
 
     /// Shutdown the PTY
+    #[instrument(name = "pty_shutdown", skip(self))]
     pub fn shutdown(&self) -> Result<()> {
-        info!("Shutting down PTY");
+        info!(subsystem = "pty", "Shutting down PTY");
         self.send_command(PtyCommand::Shutdown)
     }
 
@@ -142,6 +164,7 @@ impl Pty {
     }
 
     /// Main PTY task that handles shell communication
+    #[instrument(name = "pty_task", skip(command_rx, event_tx))]
     async fn pty_task(
         mut command_rx: mpsc::UnboundedReceiver<PtyCommand>,
         event_tx: mpsc::UnboundedSender<PtyEvent>,
@@ -164,7 +187,11 @@ impl Pty {
 
         // Create command for default shell
         let cmd = Self::get_default_shell();
-        info!("Spawning shell: {:?}", cmd);
+        info!(
+            subsystem = "pty",
+            command = ?cmd,
+            "Spawning shell process"
+        );
 
         // Spawn the shell process
         let mut child = pty_pair
@@ -187,17 +214,30 @@ impl Pty {
                 match buf_reader.read_until(b'\n', &mut buffer) {
                     Ok(0) => {
                         // EOF - shell has closed
-                        debug!("Shell output stream closed");
+                        debug!(subsystem = "pty", "Shell output stream closed");
                         break;
                     }
-                    Ok(_) => {
+                    Ok(bytes_read) => {
+                        trace!(
+                            subsystem = "pty",
+                            bytes_read = bytes_read,
+                            "Read data from shell"
+                        );
                         if let Err(e) = read_event_tx.send(PtyEvent::Data(buffer.clone())) {
-                            warn!("Failed to send data event: {}", e);
+                            warn!(
+                                subsystem = "pty",
+                                error = %e,
+                                "Failed to send data event"
+                            );
                             break;
                         }
                     }
                     Err(e) => {
-                        error!("Failed to read from shell: {}", e);
+                        error!(
+                            subsystem = "pty",
+                            error = %e,
+                            "Failed to read from shell"
+                        );
                         let _ = read_event_tx.send(PtyEvent::Error(e.to_string()));
                         break;
                     }
@@ -212,15 +252,34 @@ impl Pty {
                 cmd = command_rx.recv() => {
                     match cmd {
                         Some(PtyCommand::WriteData(data)) => {
+                            trace!(
+                                subsystem = "pty",
+                                byte_count = data.len(),
+                                "Processing write command"
+                            );
                             if let Err(e) = writer.write_all(&data) {
-                                error!("Failed to write to shell: {}", e);
+                                error!(
+                                    subsystem = "pty",
+                                    error = %e,
+                                    "Failed to write to shell"
+                                );
                                 let _ = event_tx.send(PtyEvent::Error(e.to_string()));
                             } else if let Err(e) = writer.flush() {
-                                error!("Failed to flush shell writer: {}", e);
+                                error!(
+                                    subsystem = "pty",
+                                    error = %e,
+                                    "Failed to flush shell writer"
+                                );
                                 let _ = event_tx.send(PtyEvent::Error(e.to_string()));
                             }
                         }
                         Some(PtyCommand::Resize { width, height }) => {
+                            debug!(
+                                subsystem = "pty",
+                                width = width,
+                                height = height,
+                                "Processing resize command"
+                            );
                             let new_size = PtySize {
                                 rows: height,
                                 cols: width,
@@ -228,18 +287,27 @@ impl Pty {
                                 pixel_height: 0,
                             };
                             if let Err(e) = pty_pair.master.resize(new_size) {
-                                error!("Failed to resize PTY: {}", e);
+                                error!(
+                                    subsystem = "pty",
+                                    error = %e,
+                                    "Failed to resize PTY"
+                                );
                                 let _ = event_tx.send(PtyEvent::Error(e.to_string()));
                             } else {
-                                debug!("PTY resized to {}x{}", width, height);
+                                debug!(
+                                    subsystem = "pty",
+                                    width = width,
+                                    height = height,
+                                    "PTY resized successfully"
+                                );
                             }
                         }
                         Some(PtyCommand::Shutdown) => {
-                            info!("PTY shutdown requested");
+                            info!(subsystem = "pty", "PTY shutdown requested");
                             break;
                         }
                         None => {
-                            debug!("Command channel closed");
+                            debug!(subsystem = "pty", "Command channel closed");
                             break;
                         }
                     }
@@ -249,7 +317,11 @@ impl Pty {
                 _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
                     if let Ok(Some(exit_status)) = child.try_wait() {
                         let exit_code = exit_status.exit_code() as i32;
-                        info!("Shell process exited with code: {}", exit_code);
+                        info!(
+                            subsystem = "pty",
+                            exit_code = exit_code,
+                            "Shell process exited"
+                        );
                         let _ = event_tx.send(PtyEvent::ProcessExit(exit_code));
                         break;
                     }
@@ -260,7 +332,7 @@ impl Pty {
         // Cleanup
         read_task.abort();
         let _ = child.kill();
-        info!("PTY session ended");
+        info!(subsystem = "pty", "PTY session ended");
 
         Ok(())
     }

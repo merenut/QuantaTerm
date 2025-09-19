@@ -12,3 +12,6 @@ quantaterm-core = { path = "../core" }
 thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+serde.workspace = true
+toml = "0.8"
+dirs = "5.0"
