@@ -32,6 +32,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 anyhow = "1.0"
+toml = "0.8"
+dirs = "5.0"
 
 # Window and GPU dependencies
 winit = "0.30"
