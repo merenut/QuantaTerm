@@ -44,7 +44,7 @@ wgpu = "26.0"
 pollster = "0.3"
 
 # Clipboard support
-arboard = "3.4"
+arboard = "3.2"
 
 [profile.dev]
 opt-level = 0
