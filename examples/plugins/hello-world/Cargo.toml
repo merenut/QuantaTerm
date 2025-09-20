@@ -1,0 +1,22 @@
+[package]
+name = "hello-world-plugin"
+version = "0.1.0"
+edition = "2021"
+description = "Example QuantaTerm plugin that demonstrates basic functionality"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Note: In a real implementation, these would reference the actual crates
+# For now, these are placeholder dependencies for the example
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# These would be the actual QuantaTerm plugin API dependencies:
+# quantaterm-plugins-api = { path = "../../../crates/plugins-api" }
+
+[profile.release]
+opt-level = "s"  # Optimize for size
+lto = true       # Enable link-time optimization
+strip = true     # Strip symbols for smaller binary

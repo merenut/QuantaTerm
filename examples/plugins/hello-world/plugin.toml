@@ -1,0 +1,52 @@
+[plugin]
+name = "hello-world"
+version = "1.0.0"
+description = "A simple hello world plugin for QuantaTerm"
+author = "QuantaTerm Team <team@quantaterm.dev>"
+license = "MIT"
+entry_point = "plugin_main"
+repository = "https://github.com/merenut/QuantaTerm"
+
+[compatibility]
+quantaterm_version = ">=0.3.0"
+wasm_version = "1.0"
+
+[capabilities]
+# Palette actions - allow this plugin to add commands to the command palette
+quantaterm = [
+    "palette.add_action"
+]
+
+# Optional: File system access (commented out for this simple example)
+# filesystem = [
+#     "read:/tmp/hello-world/**"
+# ]
+
+# Optional: Network access (commented out for this simple example)  
+# network = [
+#     "fetch:https://api.github.com/repos/merenut/QuantaTerm/**"
+# ]
+
+[ui]
+# Define UI elements this plugin provides
+actions = [
+    {
+        id = "hello_world.greet",
+        name = "Say Hello",
+        description = "Display a greeting message",
+        category = "Examples",
+        shortcut = "Ctrl+Alt+H"
+    },
+    {
+        id = "hello_world.info", 
+        name = "Plugin Info",
+        description = "Show information about this plugin",
+        category = "Examples"
+    }
+]
+
+[config]
+# Default configuration for this plugin
+default_greeting = "Hello from QuantaTerm!"
+show_timestamp = true
+max_greetings = 10
