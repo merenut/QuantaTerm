@@ -6,11 +6,11 @@
 #![deny(unsafe_code)]
 
 use anyhow::{Context, Result};
+use bitflags::bitflags;
 use std::sync::Arc;
 use tracing::{debug, info, instrument, trace, warn};
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{dpi::PhysicalSize, window::Window};
-use bitflags::bitflags;
 
 /// A color representation for terminal cells (renderer-specific copy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -346,7 +346,9 @@ impl Renderer {
 
         // Update background color based on content with formatted cells
         let total_cells: usize = self.viewport.iter().map(|row| row.len()).sum();
-        let non_empty_cells = self.viewport.iter()
+        let non_empty_cells = self
+            .viewport
+            .iter()
             .flat_map(|row| row.iter())
             .filter(|cell| cell.glyph_id != b' ' as u32 && cell.glyph_id != 0)
             .count();
@@ -379,15 +381,21 @@ impl Renderer {
     }
 
     /// Get color information from a specific cell for rendering
-    pub fn get_cell_colors(&self, row: usize, col: usize) -> Option<(RendererColor, RendererColor)> {
-        self.viewport.get(row)
+    pub fn get_cell_colors(
+        &self,
+        row: usize,
+        col: usize,
+    ) -> Option<(RendererColor, RendererColor)> {
+        self.viewport
+            .get(row)
             .and_then(|row| row.get(col))
             .map(|cell| (cell.fg_color, cell.bg_color))
     }
 
     /// Get attribute information from a specific cell for rendering
     pub fn get_cell_attributes(&self, row: usize, col: usize) -> Option<RendererCellAttrs> {
-        self.viewport.get(row)
+        self.viewport
+            .get(row)
             .and_then(|row| row.get(col))
             .map(|cell| cell.attrs)
     }
@@ -437,9 +445,8 @@ mod tests {
         let text = "Hello\nWorld\nTest";
         for line in text.lines() {
             if !line.trim().is_empty() {
-                let cell_row: Vec<RendererCell> = line.chars()
-                    .map(|c| RendererCell::new(c as u32))
-                    .collect();
+                let cell_row: Vec<RendererCell> =
+                    line.chars().map(|c| RendererCell::new(c as u32)).collect();
                 viewport.push(cell_row);
             }
         }
@@ -453,10 +460,11 @@ mod tests {
         assert_eq!(viewport[0][0].glyph_id, b'H' as u32);
         assert_eq!(viewport[0][4].glyph_id, b'o' as u32);
         assert_eq!(viewport[1][0].glyph_id, b'W' as u32);
-        
+
         // Test buffer length limiting simulation
         for i in 0..105 {
-            let line: Vec<RendererCell> = format!("Line {}", i).chars()
+            let line: Vec<RendererCell> = format!("Line {}", i)
+                .chars()
                 .map(|c| RendererCell::new(c as u32))
                 .collect();
             viewport.push(line);
@@ -477,29 +485,29 @@ mod tests {
 
         // Create a row with various colors and attributes
         let mut row = Vec::new();
-        
+
         // Red bold 'R'
         row.push(RendererCell::with_style(
             b'R' as u32,
             RendererColor::rgb(255, 0, 0),
             RendererColor::rgb(0, 0, 0),
-            RendererCellAttrs::BOLD
+            RendererCellAttrs::BOLD,
         ));
-        
+
         // Green italic 'G'
         row.push(RendererCell::with_style(
             b'G' as u32,
             RendererColor::rgb(0, 255, 0),
             RendererColor::rgb(0, 0, 0),
-            RendererCellAttrs::ITALIC
+            RendererCellAttrs::ITALIC,
         ));
-        
+
         // Blue underlined 'B' with custom background
         row.push(RendererCell::with_style(
             b'B' as u32,
             RendererColor::rgb(0, 0, 255),
             RendererColor::rgb(128, 128, 128),
-            RendererCellAttrs::UNDERLINE
+            RendererCellAttrs::UNDERLINE,
         ));
 
         viewport.push(row);
@@ -507,10 +515,10 @@ mod tests {
         // Verify color information can be extracted
         assert_eq!(viewport[0][0].fg_color, RendererColor::rgb(255, 0, 0));
         assert_eq!(viewport[0][0].attrs, RendererCellAttrs::BOLD);
-        
+
         assert_eq!(viewport[0][1].fg_color, RendererColor::rgb(0, 255, 0));
         assert_eq!(viewport[0][1].attrs, RendererCellAttrs::ITALIC);
-        
+
         assert_eq!(viewport[0][2].fg_color, RendererColor::rgb(0, 0, 255));
         assert_eq!(viewport[0][2].bg_color, RendererColor::rgb(128, 128, 128));
         assert_eq!(viewport[0][2].attrs, RendererCellAttrs::UNDERLINE);
@@ -520,15 +528,17 @@ mod tests {
     fn test_viewport_text_conversion() {
         // Test conversion from viewport cells back to text
         let mut viewport = Vec::new();
-        
+
         let text_line = "Hello World";
-        let cell_row: Vec<RendererCell> = text_line.chars()
+        let cell_row: Vec<RendererCell> = text_line
+            .chars()
             .map(|c| RendererCell::new(c as u32))
             .collect();
         viewport.push(cell_row);
 
         // Convert back to text
-        let converted_text: String = viewport[0].iter()
+        let converted_text: String = viewport[0]
+            .iter()
             .map(|cell| (cell.glyph_id as u8) as char)
             .collect();
 
@@ -542,13 +552,13 @@ mod tests {
             b'T' as u32,
             RendererColor::rgb(123, 45, 67),  // Custom RGB color
             RendererColor::rgb(234, 156, 78), // Custom RGB background
-            RendererCellAttrs::BOLD | RendererCellAttrs::ITALIC
+            RendererCellAttrs::BOLD | RendererCellAttrs::ITALIC,
         );
 
         assert_eq!(cell.fg_color.r, 123);
         assert_eq!(cell.fg_color.g, 45);
         assert_eq!(cell.fg_color.b, 67);
-        
+
         assert_eq!(cell.bg_color.r, 234);
         assert_eq!(cell.bg_color.g, 156);
         assert_eq!(cell.bg_color.b, 78);
@@ -561,21 +571,21 @@ mod tests {
     fn test_256_color_cell_creation() {
         // Test that renderer can handle 256-color palette colors
         // (This would typically come from the parser, but we can test the cell structure)
-        
+
         // Standard red (index 1 in 256-color palette)
         let red_cell = RendererCell::with_style(
             b'R' as u32,
             RendererColor::rgb(128, 0, 0),
             RendererColor::rgb(0, 0, 0),
-            RendererCellAttrs::empty()
+            RendererCellAttrs::empty(),
         );
 
-        // Bright green (index 10 in 256-color palette)  
+        // Bright green (index 10 in 256-color palette)
         let green_cell = RendererCell::with_style(
             b'G' as u32,
             RendererColor::rgb(0, 255, 0),
             RendererColor::rgb(0, 0, 0),
-            RendererCellAttrs::empty()
+            RendererCellAttrs::empty(),
         );
 
         assert_eq!(red_cell.fg_color, RendererColor::rgb(128, 0, 0));
