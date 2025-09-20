@@ -12,7 +12,7 @@ pub mod shaper;
 pub mod atlas;
 
 pub use loader::{FontLoader, SystemFontLoader};
-// pub use shaper::{GlyphShaper, GlyphInfo}; // Will be implemented in Task 1.2
+pub use shaper::{GlyphShaper, GlyphInfo};
 // pub use atlas::{GlyphAtlas, AtlasRegion}; // Will be implemented in Task 1.3
 
 /// Font information metadata
