@@ -1,67 +1,21 @@
-name: Release
+name: Release Rust Binary
 
 on:
   push:
     tags:
-      - 'v*'
-  release:
-    types: [published]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build release for'
-        required: true
-        default: 'v0.1.0'
-
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+      - 'v[0-9]+.[0-9]+.[0-9]+' # Triggers on tags like v1.0.0
 
 jobs:
-  build-release:
-    name: Build Release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux x86_64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            cross: false
-            archive: tar.gz
-            
-          # Linux ARM64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            cross: true
-            archive: tar.gz
-            
-          # macOS Intel
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            cross: false
-            archive: tar.gz
-            
-          # macOS Apple Silicon
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            cross: false
-            archive: tar.gz
-            
-          # Windows x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            cross: false
-            archive: zip
+  release:
+    name: Create Release
+    runs-on: macos-latest # Specifies macOS runner
 
-    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
@@ -113,49 +67,23 @@ jobs:
       - name: Build release (native)
         if: "!matrix.cross"
         run: cargo build --release --locked --target ${{ matrix.target }}
+          profile: minimal
+          override: true
 
-      - name: Build release (cross)
-        if: matrix.cross
-        run: cross build --release --locked --target ${{ matrix.target }}
+      - name: Build Release Binary for macOS
+        run: cargo build --release --target x86_64-apple-darwin # Or aarch64-apple-darwin for Apple Silicon
+        # Add any necessary build flags or features here
 
-      - name: Create release directory
-        shell: bash
+      - name: Package Release Binary
         run: |
-          mkdir -p release
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp target/${{ matrix.target }}/release/quantaterm.exe release/
-          else
-            cp target/${{ matrix.target }}/release/quantaterm release/
-          fi
-          
-          # Copy additional files
-          cp README.md release/
-          cp LICENSE release/
-          
-          # Create version info file
-          echo "QuantaTerm ${{ steps.get_tag.outputs.tag }}" > release/VERSION
-          echo "Built for ${{ matrix.target }}" >> release/VERSION
-          echo "Build date: $(date -u)" >> release/VERSION
+          mkdir staging
+          cp target/x86_64-apple-darwin/release/<YOUR_BINARY_NAME> staging/ # Adjust target and binary name
+          # Add any other files you want to include in the release archive, e.g., README, LICENSE
+          zip -r <YOUR_BINARY_NAME>-macos.zip staging/
 
-      - name: Create archive (Unix)
-        if: matrix.archive == 'tar.gz'
-        shell: bash
-        run: |
-          cd release
-          tar -czf ../quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.tar.gz *
-          cd ..
-
-      - name: Create archive (Windows)
-        if: matrix.archive == 'zip'
-        shell: bash
-        run: |
-          cd release
-          7z a ../quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.zip *
-          cd ..
-
-      - name: Upload release assets
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
         with:
           files: |
             quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.tar.gz
@@ -236,3 +164,8 @@ jobs:
             echo "No appropriate archive found for Windows"
             ls -la
           fi
+          files: <YOUR_BINARY_NAME>-macos.zip
+          draft: true # Set to false to publish immediately
+          prerelease: false # Set to true for pre-releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
