@@ -228,7 +228,8 @@ async fn run_generate(args: GenerateArgs) -> Result<()> {
             // Simulate some processing delay
             std::thread::sleep(Duration::from_micros(data.len() as u64 / 100));
 
-            // Print some progress
+            // Print some progress  
+            #[allow(clippy::pedantic)]
             if total_output.len() % 10000 == 0 {
                 println!("Generated {} bytes", total_output.len());
             }

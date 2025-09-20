@@ -83,14 +83,8 @@ jobs:
       - name: Install cross-compilation dependencies (Linux ARM64)
         if: runner.os == 'Linux' && matrix.cross && contains(matrix.target, 'aarch64')
         run: |
-          sudo dpkg --add-architecture arm64
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev:arm64 \
-            libfreetype6-dev:arm64 \
-            libharfbuzz-dev:arm64 \
-            pkg-config \
-            gcc-aarch64-linux-gnu
+          # Cross compilation for ARM64 - let cross handle system dependencies
+          echo "Using cross for ARM64 compilation"
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
