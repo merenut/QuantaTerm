@@ -9,6 +9,18 @@ repository.workspace = true
 
 [dependencies]
 quantaterm-core = { path = "../core" }
+quantaterm-plugins-api = { path = "../plugins-api" }
 thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toml.workspace = true
+dirs.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
+notify.workspace = true
+
+[dev-dependencies]
+tempfile = "3.8"
