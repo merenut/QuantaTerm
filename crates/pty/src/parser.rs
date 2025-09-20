@@ -304,13 +304,16 @@ impl Perform for ParsePerformer {
                 let lines = params_vec.first().copied().unwrap_or(0);
                 let lines = if lines == 0 { 1 } else { lines };
                 self.actions
-                    .push(ParseAction::CsiDispatch(CsiAction::CursorPreviousLine(lines)));
+                    .push(ParseAction::CsiDispatch(CsiAction::CursorPreviousLine(
+                        lines,
+                    )));
             }
             'G' => {
                 // CHA - Cursor Horizontal Absolute
                 let col = params_vec.first().copied().unwrap_or(1);
-                self.actions
-                    .push(ParseAction::CsiDispatch(CsiAction::CursorHorizontalAbsolute(col.saturating_sub(1))));
+                self.actions.push(ParseAction::CsiDispatch(
+                    CsiAction::CursorHorizontalAbsolute(col.saturating_sub(1)),
+                ));
             }
             'H' | 'f' => {
                 // CUP/HVP - Cursor Position
@@ -318,7 +321,8 @@ impl Perform for ParsePerformer {
                 let col = params_vec.get(1).copied().unwrap_or(1);
                 self.actions
                     .push(ParseAction::CsiDispatch(CsiAction::CursorPosition(
-                        row.saturating_sub(1), col.saturating_sub(1)
+                        row.saturating_sub(1),
+                        col.saturating_sub(1),
                     )));
             }
             _ => {

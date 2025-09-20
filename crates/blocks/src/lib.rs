@@ -725,7 +725,7 @@ impl TerminalGrid {
     /// This provides integration with the renderer for color and attribute display
     pub fn update_renderer(&self, renderer: &mut quantaterm_renderer::Renderer) {
         let viewport = self.get_viewport();
-        
+
         // Convert blocks cells to renderer cells
         let renderer_viewport: Vec<Vec<quantaterm_renderer::RendererCell>> = viewport
             .iter()
@@ -746,27 +746,33 @@ impl TerminalGrid {
                             ),
                             // Convert cell attributes to renderer attributes
                             {
-                                let mut renderer_attrs = quantaterm_renderer::RendererCellAttrs::empty();
+                                let mut renderer_attrs =
+                                    quantaterm_renderer::RendererCellAttrs::empty();
                                 if cell.attrs.contains(CellAttrs::BOLD) {
                                     renderer_attrs |= quantaterm_renderer::RendererCellAttrs::BOLD;
                                 }
                                 if cell.attrs.contains(CellAttrs::ITALIC) {
-                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::ITALIC;
+                                    renderer_attrs |=
+                                        quantaterm_renderer::RendererCellAttrs::ITALIC;
                                 }
                                 if cell.attrs.contains(CellAttrs::UNDERLINE) {
-                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::UNDERLINE;
+                                    renderer_attrs |=
+                                        quantaterm_renderer::RendererCellAttrs::UNDERLINE;
                                 }
                                 if cell.attrs.contains(CellAttrs::STRIKETHROUGH) {
-                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::STRIKETHROUGH;
+                                    renderer_attrs |=
+                                        quantaterm_renderer::RendererCellAttrs::STRIKETHROUGH;
                                 }
                                 if cell.attrs.contains(CellAttrs::BLINK) {
                                     renderer_attrs |= quantaterm_renderer::RendererCellAttrs::BLINK;
                                 }
                                 if cell.attrs.contains(CellAttrs::REVERSE) {
-                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::REVERSE;
+                                    renderer_attrs |=
+                                        quantaterm_renderer::RendererCellAttrs::REVERSE;
                                 }
                                 if cell.attrs.contains(CellAttrs::HIDDEN) {
-                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::HIDDEN;
+                                    renderer_attrs |=
+                                        quantaterm_renderer::RendererCellAttrs::HIDDEN;
                                 }
                                 renderer_attrs
                             },
@@ -855,12 +861,20 @@ impl TerminalGrid {
             CsiAction::CursorNextLine(lines) => {
                 self.move_cursor_down(*lines);
                 self.move_cursor_to_line_start();
-                trace!(subsystem = "blocks", lines = lines, "Moved cursor to next line");
+                trace!(
+                    subsystem = "blocks",
+                    lines = lines,
+                    "Moved cursor to next line"
+                );
             }
             CsiAction::CursorPreviousLine(lines) => {
                 self.move_cursor_up(*lines);
                 self.move_cursor_to_line_start();
-                trace!(subsystem = "blocks", lines = lines, "Moved cursor to previous line");
+                trace!(
+                    subsystem = "blocks",
+                    lines = lines,
+                    "Moved cursor to previous line"
+                );
             }
             CsiAction::CursorHorizontalAbsolute(col) => {
                 self.move_cursor_to_column(*col);
@@ -868,7 +882,12 @@ impl TerminalGrid {
             }
             CsiAction::CursorPosition(row, col) => {
                 self.set_cursor_position(*col, *row);
-                trace!(subsystem = "blocks", row = row, col = col, "Set cursor position");
+                trace!(
+                    subsystem = "blocks",
+                    row = row,
+                    col = col,
+                    "Set cursor position"
+                );
             }
             CsiAction::Other { command, params } => {
                 debug!(
@@ -1106,10 +1125,7 @@ impl TerminalGrid {
     /// Select all text in the current viewport
     pub fn select_all(&mut self) {
         let start = Position::new(0, 0);
-        let end = Position::new(
-            self.cols.saturating_sub(1),
-            self.rows.saturating_sub(1),
-        );
+        let end = Position::new(self.cols.saturating_sub(1), self.rows.saturating_sub(1));
         self.selection = Some(Selection::new(start, end));
         debug!(subsystem = "blocks", "Selected all text in viewport");
     }
@@ -1117,15 +1133,15 @@ impl TerminalGrid {
     /// Select the word at the given position
     pub fn select_word_at(&mut self, position: Position) {
         let clamped_pos = self.clamp_position(position);
-        
+
         if let Some(line) = self.get_viewport_line(clamped_pos.row) {
             let start_col = self.find_word_boundary_left(line, clamped_pos.col);
             let end_col = self.find_word_boundary_right(line, clamped_pos.col);
-            
+
             let start = Position::new(start_col, clamped_pos.row);
             let end = Position::new(end_col, clamped_pos.row);
             self.selection = Some(Selection::new(start, end));
-            
+
             debug!(
                 subsystem = "blocks",
                 start_col = start_col,
@@ -1139,7 +1155,7 @@ impl TerminalGrid {
     /// Find the left boundary of a word (start of word)
     fn find_word_boundary_left(&self, line: &CellRow, start_col: u16) -> u16 {
         let mut col = start_col as usize;
-        
+
         // Move left while we have word characters
         while col > 0 {
             if let Some(cell) = line.get(col.saturating_sub(1)) {
@@ -1156,14 +1172,14 @@ impl TerminalGrid {
                 break;
             }
         }
-        
+
         col as u16
     }
 
     /// Find the right boundary of a word (end of word)
     fn find_word_boundary_right(&self, line: &CellRow, start_col: u16) -> u16 {
         let mut col = start_col as usize;
-        
+
         // Move right while we have word characters
         while col < line.len() {
             if let Some(cell) = line.get(col) {
@@ -1180,7 +1196,7 @@ impl TerminalGrid {
                 break;
             }
         }
-        
+
         // Return the last valid character position (not the position after)
         if col > start_col as usize {
             (col - 1).min(self.cols.saturating_sub(1) as usize) as u16
@@ -2000,10 +2016,10 @@ mod tests {
 
         // Start selection
         grid.start_selection(Position::new(2, 1));
-        
+
         // Extend selection
         grid.extend_selection(Position::new(6, 3));
-        
+
         let selection = grid.get_selection().unwrap();
         assert_eq!(selection.start, Position::new(2, 1));
         assert_eq!(selection.end, Position::new(6, 3));
@@ -2016,10 +2032,10 @@ mod tests {
 
         // Start selection
         grid.start_selection(Position::new(6, 3));
-        
+
         // Extend selection backwards (should normalize)
         grid.extend_selection(Position::new(2, 1));
-        
+
         let selection = grid.get_selection().unwrap();
         assert_eq!(selection.start, Position::new(2, 1));
         assert_eq!(selection.end, Position::new(6, 3));
@@ -2054,7 +2070,7 @@ mod tests {
         let mut grid = TerminalGrid::new(10, 5);
 
         grid.select_all();
-        
+
         let selection = grid.get_selection().unwrap();
         assert_eq!(selection.start, Position::new(0, 0));
         assert_eq!(selection.end, Position::new(9, 4));
@@ -2369,8 +2385,8 @@ mod tests {
     #[test]
     fn test_complete_selection_workflow() {
         use quantaterm_core::CsiAction;
-        
-        // This test demonstrates the complete workflow of cursor movement, 
+
+        // This test demonstrates the complete workflow of cursor movement,
         // text selection, and clipboard integration
         let mut grid = TerminalGrid::new(15, 4);
 
@@ -2379,9 +2395,9 @@ mod tests {
         // Add sample content
         let content = [
             "Hello World!",
-            "Line two here", 
+            "Line two here",
             "Final content",
-            "End of buffer"
+            "End of buffer",
         ];
 
         for (row, text) in content.iter().enumerate() {
@@ -2403,7 +2419,10 @@ mod tests {
 
         grid.handle_csi_action(&CsiAction::CursorDown(1));
         grid.handle_csi_action(&CsiAction::CursorForward(5));
-        println!("   After moving down 1, right 5: {:?}", grid.cursor_position());
+        println!(
+            "   After moving down 1, right 5: {:?}",
+            grid.cursor_position()
+        );
 
         // Test word selection
         println!("\n3. Testing word selection:");
@@ -2419,7 +2438,10 @@ mod tests {
         grid.extend_selection(Position::new(5, 2)); // End at "content"
 
         if let Some(selected) = grid.get_selected_text() {
-            println!("   Multi-line selection: '{}'", selected.replace('\n', "\\n"));
+            println!(
+                "   Multi-line selection: '{}'",
+                selected.replace('\n', "\\n")
+            );
             assert!(selected.contains("two"));
             assert!(selected.contains("Final"));
         }
@@ -2427,7 +2449,10 @@ mod tests {
         // Test selection properties
         println!("\n5. Testing selection properties:");
         if let Some(selection) = grid.get_selection() {
-            println!("   Selection bounds: {:?} to {:?}", selection.start, selection.end);
+            println!(
+                "   Selection bounds: {:?} to {:?}",
+                selection.start, selection.end
+            );
             println!("   Is multiline: {}", selection.is_multiline());
             assert!(selection.is_multiline());
         }

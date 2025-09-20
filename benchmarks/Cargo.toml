@@ -1,0 +1,38 @@
+[package]
+name = "quantaterm-benchmarks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Core QuantaTerm dependencies
+quantaterm-core = { path = "../crates/core" }
+quantaterm-pty = { path = "../crates/pty" }
+quantaterm-telemetry = { path = "../crates/telemetry" }
+quantaterm-blocks = { path = "../crates/blocks" }
+
+# Async runtime and utilities
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Serialization and CLI
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4.0", features = ["derive"] }
+
+# Utilities
+anyhow = { workspace = true }
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+
+[[bin]]
+name = "pty-harness"
+path = "src/pty_harness.rs"
+
+[[bin]]
+name = "benchmark-runner"
+path = "src/benchmark_runner.rs"

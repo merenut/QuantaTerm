@@ -61,9 +61,26 @@ audit: ## Run security audit
 deny: ## Check dependencies with cargo-deny
 	cargo deny check
 
-# Benchmarks (placeholder)
-bench: ## Run benchmarks
-	@echo "Benchmarks not yet implemented"
+# Benchmarks
+bench: ## Run minimal benchmark suite
+	cd benchmarks && cargo run --bin benchmark-runner -- --suite minimal --fail-on-error
+
+bench-full: ## Run full benchmark suite
+	cd benchmarks && cargo run --bin benchmark-runner -- --suite standard --fail-on-error
+
+bench-generate: ## Generate synthetic PTY load (demo)
+	cd benchmarks && cargo run --bin pty-harness -- generate --rate 50000 --duration 5 --data-type scrolling
+
+bench-custom: ## Run custom benchmark (use BENCH_ARGS for arguments)
+	cd benchmarks && cargo run --bin pty-harness -- benchmark $(BENCH_ARGS)
+
+bench-baseline: ## Save current results as baseline
+	@echo "Running benchmarks and saving as baseline..."
+	cd benchmarks && cargo run --bin benchmark-runner -- --suite minimal --output-dir baseline_results
+	@echo "Baseline saved to benchmarks/baseline_results/"
+
+bench-regression: ## Run benchmarks with regression testing against baseline
+	cd benchmarks && cargo run --bin benchmark-runner -- --suite minimal --baseline-dir baseline_results --max-regression 10.0 --fail-on-error
 
 # Fuzzing (placeholder)  
 fuzz: ## Run fuzzing tests
