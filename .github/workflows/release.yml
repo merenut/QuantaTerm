@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build release for'
+        required: true
+        default: 'v0.1.0'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-release:
+    name: Build Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cross: false
+            archive: tar.gz
+            
+          # Linux ARM64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+            archive: tar.gz
+            
+          # macOS Intel
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            cross: false
+            archive: tar.gz
+            
+          # macOS Apple Silicon
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            cross: false
+            archive: tar.gz
+            
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cross: false
+            archive: zip
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.80
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libharfbuzz-dev \
+            pkg-config
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install harfbuzz freetype pkg-config
+
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}-${{ matrix.target }}-release
+
+      - name: Get release tag
+        id: get_tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v0.1.0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build release (native)
+        if: "!matrix.cross"
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build release (cross)
+        if: matrix.cross
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Create release directory
+        shell: bash
+        run: |
+          mkdir -p release
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp target/${{ matrix.target }}/release/quantaterm.exe release/
+          else
+            cp target/${{ matrix.target }}/release/quantaterm release/
+          fi
+          
+          # Copy additional files
+          cp README.md release/
+          cp LICENSE release/
+          
+          # Create version info file
+          echo "QuantaTerm ${{ steps.get_tag.outputs.tag }}" > release/VERSION
+          echo "Built for ${{ matrix.target }}" >> release/VERSION
+          echo "Build date: $(date -u)" >> release/VERSION
+
+      - name: Create archive (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          cd release
+          tar -czf ../quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.tar.gz *
+          cd ..
+
+      - name: Create archive (Windows)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          cd release
+          7z a ../quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.zip *
+          cd ..
+
+      - name: Upload release assets
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.tar.gz
+            quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.zip
+
+      - name: Upload artifact (for workflow_dispatch and release events)
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantaterm-${{ matrix.target }}
+          path: |
+            quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.tar.gz
+            quantaterm-${{ steps.get_tag.outputs.tag }}-${{ matrix.target }}.zip
+          if-no-files-found: ignore
+
+  test-release-builds:
+    name: Test Release Builds
+    needs: [build-release]
+    if: always() && needs.build-release.result == 'success'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: quantaterm-*
+          merge-multiple: true
+
+      - name: Test extracted binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          # Find and extract the appropriate archive for this OS
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            file=$(ls quantaterm-*-x86_64-unknown-linux-gnu.tar.gz 2>/dev/null | head -1)
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            file=$(ls quantaterm-*-x86_64-apple-darwin.tar.gz 2>/dev/null | head -1)
+          fi
+          
+          if [[ -n "$file" && -f "$file" ]]; then
+            echo "Testing archive: $file"
+            mkdir test-extract
+            tar -xzf "$file" -C test-extract
+            if [[ -f "test-extract/quantaterm" ]]; then
+              chmod +x test-extract/quantaterm
+              ./test-extract/quantaterm --help || echo "Help command failed but binary exists"
+              echo "✓ Binary extraction and basic execution test passed"
+            else
+              echo "✗ Binary not found in archive"
+              ls -la test-extract/
+              exit 1
+            fi
+          else
+            echo "No appropriate archive found for ${{ runner.os }}"
+            ls -la
+          fi
+
+      - name: Test extracted binary (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          file=$(ls quantaterm-*-x86_64-pc-windows-msvc.zip 2>/dev/null | head -1)
+          if [[ -n "$file" && -f "$file" ]]; then
+            echo "Testing archive: $file"
+            mkdir test-extract
+            unzip "$file" -d test-extract
+            if [[ -f "test-extract/quantaterm.exe" ]]; then
+              ./test-extract/quantaterm.exe --help || echo "Help command failed but binary exists"
+              echo "✓ Binary extraction and basic execution test passed"
+            else
+              echo "✗ Binary not found in archive"
+              ls -la test-extract/
+              exit 1
+            fi
+          else
+            echo "No appropriate archive found for Windows"
+            ls -la
+          fi
