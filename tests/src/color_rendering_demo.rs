@@ -3,8 +3,8 @@
 //! This module provides tests that demonstrate the enhanced renderer's ability
 //! to handle color and text attributes for 16/256/truecolor modes.
 
-use quantaterm_blocks::{CellAttrs, Color, TerminalGrid};
-use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
+// use quantaterm_blocks::{CellAttrs, Color, TerminalGrid};
+// use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
 
 /// Integration test demonstrating full color rendering pipeline
 #[test]

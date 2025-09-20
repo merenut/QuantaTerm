@@ -3,8 +3,8 @@
 //! This module provides tests for a subset of VTTest functionality,
 //! specifically focusing on SGR (Select Graphic Rendition) codes.
 
-use quantaterm_blocks::{CellAttrs, Color, TerminalGrid};
-use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
+// use quantaterm_blocks::{CellAttrs, Color, TerminalGrid};
+// use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
 
 /// VTTest subset - basic SGR functionality
 /// This covers the most common SGR codes that a terminal emulator should support

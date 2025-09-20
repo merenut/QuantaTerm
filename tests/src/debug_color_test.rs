@@ -1,7 +1,7 @@
 //! Simple color rendering test to debug the issue
 
-use quantaterm_blocks::{Color, TerminalGrid};
-use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
+// use quantaterm_blocks::{Color, TerminalGrid};
+// use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
 
 #[test]
 fn test_simple_color_parsing() {

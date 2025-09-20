@@ -1,7 +1,7 @@
 //! Integration tests for VTE parser with terminal grid
 
-use quantaterm_blocks::{CellAttrs, Color, TerminalGrid};
-use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
+// use quantaterm_blocks::{CellAttrs, Color, TerminalGrid};
+// use quantaterm_pty::{CsiAction, ParseAction, TerminalParser};
 
 /// Test basic SGR integration between parser and terminal grid
 #[test]
