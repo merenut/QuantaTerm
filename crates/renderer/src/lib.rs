@@ -435,7 +435,7 @@ mod tests {
     fn test_renderer_module_exists() {
         // Basic test to ensure the renderer module compiles
         // We can't create an actual renderer without a window/display in CI
-        assert!(true);
+        // Test passes if we reach this point
     }
 
     #[test]
@@ -486,31 +486,29 @@ mod tests {
         let mut viewport = Vec::new();
 
         // Create a row with various colors and attributes
-        let mut row = Vec::new();
-
-        // Red bold 'R'
-        row.push(RendererCell::with_style(
-            b'R' as u32,
-            RendererColor::rgb(255, 0, 0),
-            RendererColor::rgb(0, 0, 0),
-            RendererCellAttrs::BOLD,
-        ));
-
-        // Green italic 'G'
-        row.push(RendererCell::with_style(
-            b'G' as u32,
-            RendererColor::rgb(0, 255, 0),
-            RendererColor::rgb(0, 0, 0),
-            RendererCellAttrs::ITALIC,
-        ));
-
-        // Blue underlined 'B' with custom background
-        row.push(RendererCell::with_style(
-            b'B' as u32,
-            RendererColor::rgb(0, 0, 255),
-            RendererColor::rgb(128, 128, 128),
-            RendererCellAttrs::UNDERLINE,
-        ));
+        let row = vec![
+            // Red bold 'R'
+            RendererCell::with_style(
+                b'R' as u32,
+                RendererColor::rgb(255, 0, 0),
+                RendererColor::rgb(0, 0, 0),
+                RendererCellAttrs::BOLD,
+            ),
+            // Green italic 'G'
+            RendererCell::with_style(
+                b'G' as u32,
+                RendererColor::rgb(0, 255, 0),
+                RendererColor::rgb(0, 0, 0),
+                RendererCellAttrs::ITALIC,
+            ),
+            // Blue underlined 'B' with custom background
+            RendererCell::with_style(
+                b'B' as u32,
+                RendererColor::rgb(0, 0, 255),
+                RendererColor::rgb(128, 128, 128),
+                RendererCellAttrs::UNDERLINE,
+            ),
+        ];
 
         viewport.push(row);
 

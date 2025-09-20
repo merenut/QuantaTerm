@@ -216,10 +216,12 @@ pub fn update_module_level(module: &str, level: LogLevel) -> crate::Result<()> {
 
 /// Get default development logging configuration
 pub fn dev_config() -> LoggingConfig {
-    let mut config = LoggingConfig::default();
-    config.global_level = LogLevel::Debug;
-    config.use_colors = true;
-    config.json_format = false;
+    let mut config = LoggingConfig {
+        global_level: LogLevel::Debug,
+        use_colors: true,
+        json_format: false,
+        ..Default::default()
+    };
 
     // Enable debug for key development modules
     config
@@ -237,10 +239,12 @@ pub fn dev_config() -> LoggingConfig {
 
 /// Get default production logging configuration
 pub fn prod_config() -> LoggingConfig {
-    let mut config = LoggingConfig::default();
-    config.global_level = LogLevel::Info;
-    config.use_colors = false;
-    config.json_format = true;
+    let mut config = LoggingConfig {
+        global_level: LogLevel::Info,
+        use_colors: false,
+        json_format: true,
+        ..Default::default()
+    };
 
     // Production-appropriate levels
     config
@@ -264,13 +268,15 @@ pub fn prod_config() -> LoggingConfig {
 
 /// Get CI/testing logging configuration  
 pub fn ci_config() -> LoggingConfig {
-    let mut config = LoggingConfig::default();
-    config.global_level = LogLevel::Info;
-    config.use_colors = false;
-    config.json_format = true;
-    config.include_timestamps = true;
-    config.include_severity = true;
-    config.include_subsystem = true;
+    let mut config = LoggingConfig {
+        global_level: LogLevel::Info,
+        use_colors: false,
+        json_format: true,
+        include_timestamps: true,
+        include_severity: true,
+        include_subsystem: true,
+        ..Default::default()
+    };
 
     // CI-appropriate levels for debugging test failures
     config

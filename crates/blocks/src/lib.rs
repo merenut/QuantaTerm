@@ -2241,7 +2241,7 @@ mod tests {
         let selected_text = grid.get_selected_text();
         if let Some(text) = selected_text {
             // Should handle empty cells gracefully
-            assert!(text.len() > 0 || text.is_empty()); // Just ensure it's valid
+            assert!(!text.is_empty() || text.is_empty()); // Just ensure it's valid
         }
     }
 

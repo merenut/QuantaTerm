@@ -406,9 +406,9 @@ fn parse_extended_color(params: &[u16]) -> Option<(Color, usize)> {
             if params.len() < 5 {
                 return None;
             }
-            let r = (params[2] as u8).min(255);
-            let g = (params[3] as u8).min(255);
-            let b = (params[4] as u8).min(255);
+            let r = params[2] as u8;
+            let g = params[3] as u8;
+            let b = params[4] as u8;
             Some((Color::rgb(r, g, b), 4))
         }
 

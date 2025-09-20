@@ -7,12 +7,12 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
+pub mod atlas;
 pub mod loader;
 pub mod shaper;
-pub mod atlas;
 
 pub use loader::{FontLoader, SystemFontLoader};
-pub use shaper::{GlyphShaper, GlyphInfo};
+pub use shaper::{GlyphInfo, GlyphShaper};
 // pub use atlas::{GlyphAtlas, AtlasRegion}; // Will be implemented in Task 1.3
 
 /// Font information metadata
@@ -80,7 +80,7 @@ impl FontSystem {
     pub fn new() -> Result<Self> {
         let loader = Box::new(SystemFontLoader::new()?);
         let fallback_chain = Self::build_fallback_chain();
-        
+
         Ok(Self {
             loader,
             font_cache: HashMap::new(),
@@ -96,18 +96,18 @@ impl FontSystem {
             style: FontStyle::Normal,
             weight: FontWeight::Normal,
         };
-        
+
         // Check cache first
         if let Some(font) = self.font_cache.get(&key) {
             return Ok(font.clone());
         }
-        
+
         // Try to load primary font
         if let Ok(font) = self.loader.load_font(family, size) {
             self.font_cache.insert(key.clone(), font.clone());
             return Ok(font);
         }
-        
+
         // Try fallback fonts
         for fallback in &self.fallback_chain {
             if let Ok(font) = self.loader.load_font(&fallback.family, size) {
@@ -115,7 +115,7 @@ impl FontSystem {
                 return Ok(font);
             }
         }
-        
+
         anyhow::bail!("No suitable font found for family: {}", family)
     }
 
@@ -181,23 +181,23 @@ impl FontSystem {
 mod tests {
     use super::*;
     use ab_glyph::Font;
-    
+
     #[test]
     fn test_font_system_creation() {
         let font_system = FontSystem::new();
         assert!(font_system.is_ok());
     }
-    
+
     #[test]
     fn test_font_loading() {
         let mut font_system = FontSystem::new().unwrap();
         let font = font_system.load_font("monospace", 14.0);
         assert!(font.is_ok());
-        
+
         let font = font.unwrap();
         assert!(font.glyph_count() > 0);
     }
-    
+
     #[test]
     fn test_fallback_behavior() {
         let mut font_system = FontSystem::new().unwrap();
@@ -209,11 +209,11 @@ mod tests {
     #[test]
     fn test_font_caching() {
         let mut font_system = FontSystem::new().unwrap();
-        
+
         // Load same font twice - should use cache
         let _font1 = font_system.load_font("monospace", 14.0).unwrap();
         let _font2 = font_system.load_font("monospace", 14.0).unwrap();
-        
+
         // Cache should contain only one entry for the same font parameters
         let stats = font_system.cache_stats();
         assert_eq!(stats.0, 1); // Only one font cached despite two loads
@@ -222,15 +222,15 @@ mod tests {
     #[test]
     fn test_cache_management() {
         let mut font_system = FontSystem::new().unwrap();
-        
+
         let initial_stats = font_system.cache_stats();
         assert_eq!(initial_stats.0, 0); // Empty cache initially
-        
+
         // Load a font
         let _font = font_system.load_font("monospace", 14.0).unwrap();
         let stats = font_system.cache_stats();
         assert_eq!(stats.0, 1); // One font cached
-        
+
         // Clear cache
         font_system.clear_cache();
         let final_stats = font_system.cache_stats();
