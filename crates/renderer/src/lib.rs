@@ -10,6 +10,96 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument, trace, warn};
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{dpi::PhysicalSize, window::Window};
+use bitflags::bitflags;
+
+/// A color representation for terminal cells (renderer-specific copy)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RendererColor {
+    /// Red component (0-255)
+    pub r: u8,
+    /// Green component (0-255)
+    pub g: u8,
+    /// Blue component (0-255)
+    pub b: u8,
+    /// Alpha component (0-255)
+    pub a: u8,
+}
+
+impl RendererColor {
+    /// Create a new color
+    pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self { r, g, b, a }
+    }
+
+    /// Create a new RGB color with full alpha
+    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self::new(r, g, b, 255)
+    }
+}
+
+bitflags! {
+    /// Cell attribute flags for styling (renderer-specific copy)
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct RendererCellAttrs: u32 {
+        /// Bold text
+        const BOLD = 1 << 0;
+        /// Italic text
+        const ITALIC = 1 << 1;
+        /// Underlined text
+        const UNDERLINE = 1 << 2;
+        /// Strikethrough text
+        const STRIKETHROUGH = 1 << 3;
+        /// Blinking text
+        const BLINK = 1 << 4;
+        /// Reversed colors (fg/bg swapped)
+        const REVERSE = 1 << 5;
+        /// Hidden/invisible text
+        const HIDDEN = 1 << 6;
+    }
+}
+
+/// A terminal cell for rendering (renderer-specific copy)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RendererCell {
+    /// Unicode glyph identifier
+    pub glyph_id: u32,
+    /// Foreground color
+    pub fg_color: RendererColor,
+    /// Background color
+    pub bg_color: RendererColor,
+    /// Formatting attributes
+    pub attrs: RendererCellAttrs,
+}
+
+impl RendererCell {
+    /// Create a new cell with the given glyph
+    pub fn new(glyph_id: u32) -> Self {
+        Self {
+            glyph_id,
+            fg_color: RendererColor::rgb(255, 255, 255), // White
+            bg_color: RendererColor::rgb(0, 0, 0),       // Black
+            attrs: RendererCellAttrs::empty(),
+        }
+    }
+
+    /// Create a cell with custom colors and attributes
+    pub fn with_style(
+        glyph_id: u32,
+        fg_color: RendererColor,
+        bg_color: RendererColor,
+        attrs: RendererCellAttrs,
+    ) -> Self {
+        Self {
+            glyph_id,
+            fg_color,
+            bg_color,
+            attrs,
+        }
+    }
+}
+
+/// A row of terminal cells for rendering
+pub type RendererCellRow = Vec<RendererCell>;
 
 /// GPU-accelerated renderer for QuantaTerm
 pub struct Renderer {
@@ -19,8 +109,8 @@ pub struct Renderer {
     queue: Queue,
     config: SurfaceConfiguration,
     size: PhysicalSize<u32>,
-    /// Simple text buffer for storing terminal output
-    text_buffer: Vec<String>,
+    /// Terminal viewport with full color and attribute data
+    viewport: Vec<RendererCellRow>,
     /// Current background color (changes when we receive shell output)
     background_color: wgpu::Color,
 }
@@ -118,7 +208,7 @@ impl Renderer {
             queue,
             config,
             size,
-            text_buffer: Vec::new(),
+            viewport: Vec::new(),
             background_color: wgpu::Color {
                 r: 0.1,
                 g: 0.2,
@@ -198,37 +288,41 @@ impl Renderer {
     /// Add text to the terminal buffer and update display
     #[instrument(name = "renderer_add_text", skip(self))]
     pub fn add_text(&mut self, text: &str) {
-        // Split text into lines and add to buffer
+        // Convert plain text to cell data for backward compatibility
         let new_lines: Vec<_> = text
             .lines()
             .filter(|line| !line.trim().is_empty())
-            .map(|line| line.to_string())
+            .map(|line| {
+                line.chars()
+                    .map(|c| RendererCell::new(c as u32))
+                    .collect::<Vec<RendererCell>>()
+            })
             .collect();
 
         let line_count = new_lines.len();
-        self.text_buffer.extend(new_lines);
+        self.viewport.extend(new_lines);
 
         debug!(
             subsystem = "renderer",
             line_count = line_count,
-            total_buffer_size = self.text_buffer.len(),
-            "Added text to renderer buffer"
+            total_viewport_lines = self.viewport.len(),
+            "Added text to renderer viewport"
         );
 
         // Keep only the last 100 lines to prevent memory growth
-        if self.text_buffer.len() > 100 {
-            let removed_count = self.text_buffer.len() - 100;
-            self.text_buffer.drain(0..removed_count);
+        if self.viewport.len() > 100 {
+            let removed_count = self.viewport.len() - 100;
+            self.viewport.drain(0..removed_count);
             trace!(
                 subsystem = "renderer",
                 removed_lines = removed_count,
-                remaining_lines = self.text_buffer.len(),
-                "Trimmed text buffer to prevent memory growth"
+                remaining_lines = self.viewport.len(),
+                "Trimmed viewport to prevent memory growth"
             );
         }
 
         // Change background color slightly when we have output to show visual feedback
-        let line_count = self.text_buffer.len() as f64;
+        let line_count = self.viewport.len() as f64;
         self.background_color = wgpu::Color {
             r: 0.1 + (line_count * 0.01).min(0.2),
             g: 0.2 + (line_count * 0.005).min(0.1),
@@ -237,14 +331,96 @@ impl Renderer {
         };
     }
 
+    /// Update the renderer with formatted viewport data from terminal grid
+    /// This is the primary method for rendering color and attribute information
+    #[instrument(name = "renderer_update_viewport", skip(self, viewport))]
+    pub fn update_viewport(&mut self, viewport: Vec<RendererCellRow>) {
+        debug!(
+            subsystem = "renderer",
+            rows = viewport.len(),
+            cols = viewport.first().map(|row| row.len()).unwrap_or(0),
+            "Updating renderer viewport with formatted cell data"
+        );
+
+        self.viewport = viewport;
+
+        // Update background color based on content with formatted cells
+        let total_cells: usize = self.viewport.iter().map(|row| row.len()).sum();
+        let non_empty_cells = self.viewport.iter()
+            .flat_map(|row| row.iter())
+            .filter(|cell| cell.glyph_id != b' ' as u32 && cell.glyph_id != 0)
+            .count();
+
+        let content_ratio = if total_cells > 0 {
+            non_empty_cells as f64 / total_cells as f64
+        } else {
+            0.0
+        };
+
+        self.background_color = wgpu::Color {
+            r: 0.1 + (content_ratio * 0.15).min(0.15),
+            g: 0.2 + (content_ratio * 0.1).min(0.1),
+            b: 0.3,
+            a: 1.0,
+        };
+
+        trace!(
+            subsystem = "renderer",
+            total_cells = total_cells,
+            non_empty_cells = non_empty_cells,
+            content_ratio = content_ratio,
+            "Updated background color based on content density"
+        );
+    }
+
+    /// Get a reference to the current viewport data
+    pub fn get_viewport(&self) -> &[RendererCellRow] {
+        &self.viewport
+    }
+
+    /// Get color information from a specific cell for rendering
+    pub fn get_cell_colors(&self, row: usize, col: usize) -> Option<(RendererColor, RendererColor)> {
+        self.viewport.get(row)
+            .and_then(|row| row.get(col))
+            .map(|cell| (cell.fg_color, cell.bg_color))
+    }
+
+    /// Get attribute information from a specific cell for rendering
+    pub fn get_cell_attributes(&self, row: usize, col: usize) -> Option<RendererCellAttrs> {
+        self.viewport.get(row)
+            .and_then(|row| row.get(col))
+            .map(|cell| cell.attrs)
+    }
+
+    /// Extract text content from viewport for compatibility
+    pub fn get_viewport_text(&self) -> Vec<String> {
+        self.viewport
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|cell| {
+                        if cell.glyph_id == 0 {
+                            ' '
+                        } else {
+                            (cell.glyph_id as u8) as char
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
     /// Get the current text buffer (for debugging/testing)
-    pub fn get_text_buffer(&self) -> &[String] {
-        &self.text_buffer
+    pub fn get_text_buffer(&self) -> Vec<String> {
+        // Convert viewport to text for backward compatibility
+        self.get_viewport_text()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_renderer_module_exists() {
         // Basic test to ensure the renderer module compiles
@@ -254,33 +430,155 @@ mod tests {
 
     #[test]
     fn test_text_buffer_functionality() {
-        // We can't create a full renderer without a window, but we can test
-        // the logic by creating a mock renderer struct with the text buffer
-        let mut text_buffer = Vec::new();
+        // Test legacy text buffer functionality for backward compatibility
+        let mut viewport = Vec::new();
 
-        // Test adding text
+        // Test adding text converted to cells
         let text = "Hello\nWorld\nTest";
         for line in text.lines() {
             if !line.trim().is_empty() {
-                text_buffer.push(line.to_string());
+                let cell_row: Vec<RendererCell> = line.chars()
+                    .map(|c| RendererCell::new(c as u32))
+                    .collect();
+                viewport.push(cell_row);
             }
         }
 
-        assert_eq!(text_buffer.len(), 3);
-        assert_eq!(text_buffer[0], "Hello");
-        assert_eq!(text_buffer[1], "World");
-        assert_eq!(text_buffer[2], "Test");
+        assert_eq!(viewport.len(), 3);
+        assert_eq!(viewport[0].len(), 5); // "Hello"
+        assert_eq!(viewport[1].len(), 5); // "World"
+        assert_eq!(viewport[2].len(), 4); // "Test"
 
-        // Test buffer length limiting
+        // Verify cell content
+        assert_eq!(viewport[0][0].glyph_id, b'H' as u32);
+        assert_eq!(viewport[0][4].glyph_id, b'o' as u32);
+        assert_eq!(viewport[1][0].glyph_id, b'W' as u32);
+        
+        // Test buffer length limiting simulation
         for i in 0..105 {
-            text_buffer.push(format!("Line {}", i));
+            let line: Vec<RendererCell> = format!("Line {}", i).chars()
+                .map(|c| RendererCell::new(c as u32))
+                .collect();
+            viewport.push(line);
         }
 
         // Simulate buffer limit of 100
-        if text_buffer.len() > 100 {
-            text_buffer.drain(0..text_buffer.len() - 100);
+        if viewport.len() > 100 {
+            viewport.drain(0..viewport.len() - 100);
         }
 
-        assert_eq!(text_buffer.len(), 100);
+        assert_eq!(viewport.len(), 100);
+    }
+
+    #[test]
+    fn test_color_and_attribute_handling() {
+        // Test that renderer can handle colored and styled cells
+        let mut viewport = Vec::new();
+
+        // Create a row with various colors and attributes
+        let mut row = Vec::new();
+        
+        // Red bold 'R'
+        row.push(RendererCell::with_style(
+            b'R' as u32,
+            RendererColor::rgb(255, 0, 0),
+            RendererColor::rgb(0, 0, 0),
+            RendererCellAttrs::BOLD
+        ));
+        
+        // Green italic 'G'
+        row.push(RendererCell::with_style(
+            b'G' as u32,
+            RendererColor::rgb(0, 255, 0),
+            RendererColor::rgb(0, 0, 0),
+            RendererCellAttrs::ITALIC
+        ));
+        
+        // Blue underlined 'B' with custom background
+        row.push(RendererCell::with_style(
+            b'B' as u32,
+            RendererColor::rgb(0, 0, 255),
+            RendererColor::rgb(128, 128, 128),
+            RendererCellAttrs::UNDERLINE
+        ));
+
+        viewport.push(row);
+
+        // Verify color information can be extracted
+        assert_eq!(viewport[0][0].fg_color, RendererColor::rgb(255, 0, 0));
+        assert_eq!(viewport[0][0].attrs, RendererCellAttrs::BOLD);
+        
+        assert_eq!(viewport[0][1].fg_color, RendererColor::rgb(0, 255, 0));
+        assert_eq!(viewport[0][1].attrs, RendererCellAttrs::ITALIC);
+        
+        assert_eq!(viewport[0][2].fg_color, RendererColor::rgb(0, 0, 255));
+        assert_eq!(viewport[0][2].bg_color, RendererColor::rgb(128, 128, 128));
+        assert_eq!(viewport[0][2].attrs, RendererCellAttrs::UNDERLINE);
+    }
+
+    #[test]
+    fn test_viewport_text_conversion() {
+        // Test conversion from viewport cells back to text
+        let mut viewport = Vec::new();
+        
+        let text_line = "Hello World";
+        let cell_row: Vec<RendererCell> = text_line.chars()
+            .map(|c| RendererCell::new(c as u32))
+            .collect();
+        viewport.push(cell_row);
+
+        // Convert back to text
+        let converted_text: String = viewport[0].iter()
+            .map(|cell| (cell.glyph_id as u8) as char)
+            .collect();
+
+        assert_eq!(converted_text, text_line);
+    }
+
+    #[test]
+    fn test_truecolor_support() {
+        // Test that renderer can handle truecolor (24-bit) colors
+        let cell = RendererCell::with_style(
+            b'T' as u32,
+            RendererColor::rgb(123, 45, 67),  // Custom RGB color
+            RendererColor::rgb(234, 156, 78), // Custom RGB background
+            RendererCellAttrs::BOLD | RendererCellAttrs::ITALIC
+        );
+
+        assert_eq!(cell.fg_color.r, 123);
+        assert_eq!(cell.fg_color.g, 45);
+        assert_eq!(cell.fg_color.b, 67);
+        
+        assert_eq!(cell.bg_color.r, 234);
+        assert_eq!(cell.bg_color.g, 156);
+        assert_eq!(cell.bg_color.b, 78);
+
+        assert!(cell.attrs.contains(RendererCellAttrs::BOLD));
+        assert!(cell.attrs.contains(RendererCellAttrs::ITALIC));
+    }
+
+    #[test]
+    fn test_256_color_cell_creation() {
+        // Test that renderer can handle 256-color palette colors
+        // (This would typically come from the parser, but we can test the cell structure)
+        
+        // Standard red (index 1 in 256-color palette)
+        let red_cell = RendererCell::with_style(
+            b'R' as u32,
+            RendererColor::rgb(128, 0, 0),
+            RendererColor::rgb(0, 0, 0),
+            RendererCellAttrs::empty()
+        );
+
+        // Bright green (index 10 in 256-color palette)  
+        let green_cell = RendererCell::with_style(
+            b'G' as u32,
+            RendererColor::rgb(0, 255, 0),
+            RendererColor::rgb(0, 0, 0),
+            RendererCellAttrs::empty()
+        );
+
+        assert_eq!(red_cell.fg_color, RendererColor::rgb(128, 0, 0));
+        assert_eq!(green_cell.fg_color, RendererColor::rgb(0, 255, 0));
     }
 }
