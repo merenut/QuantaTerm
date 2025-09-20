@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, instrument, warn};
 
 /// Main configuration structure for QuantaTerm
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Logging configuration
     pub logging: LoggingConfig,
@@ -45,16 +45,6 @@ pub struct RendererConfig {
     pub font_size: f32,
     /// Font family
     pub font_family: String,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            logging: LoggingConfig::default(),
-            terminal: TerminalConfig::default(),
-            renderer: RendererConfig::default(),
-        }
-    }
 }
 
 impl Default for TerminalConfig {

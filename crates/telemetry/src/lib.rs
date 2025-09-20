@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Performance metrics collector
 #[derive(Debug)]
@@ -246,7 +246,7 @@ impl Telemetry {
             let duration = start_time.elapsed();
             self.timings
                 .entry(name.to_string())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(duration);
 
             debug!(

@@ -30,9 +30,14 @@ impl GlyphAtlas {
     pub fn new(_width: u32, _height: u32) -> anyhow::Result<Self> {
         Ok(Self {})
     }
-    
+
     /// Allocate space for a glyph (placeholder)
-    pub fn allocate_glyph(&mut self, _glyph_id: u32, _width: u32, _height: u32) -> anyhow::Result<AtlasRegion> {
+    pub fn allocate_glyph(
+        &mut self,
+        _glyph_id: u32,
+        _width: u32,
+        _height: u32,
+    ) -> anyhow::Result<AtlasRegion> {
         // Placeholder implementation
         Ok(AtlasRegion {
             x: 0,
@@ -47,13 +52,13 @@ impl GlyphAtlas {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_atlas_creation() {
         let atlas = GlyphAtlas::new(512, 512);
         assert!(atlas.is_ok());
     }
-    
+
     #[test]
     fn test_atlas_allocation() {
         let mut atlas = GlyphAtlas::new(512, 512).unwrap();
