@@ -722,11 +722,61 @@ impl TerminalGrid {
     }
 
     /// Update the renderer with current viewport content
-    /// This provides integration with the renderer stub for future display
+    /// This provides integration with the renderer for color and attribute display
     pub fn update_renderer(&self, renderer: &mut quantaterm_renderer::Renderer) {
-        let text_lines = self.get_viewport_text();
-        let combined_text = text_lines.join("\n");
-        renderer.add_text(&combined_text);
+        let viewport = self.get_viewport();
+        
+        // Convert blocks cells to renderer cells
+        let renderer_viewport: Vec<Vec<quantaterm_renderer::RendererCell>> = viewport
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|cell| {
+                        quantaterm_renderer::RendererCell::with_style(
+                            cell.glyph_id,
+                            quantaterm_renderer::RendererColor::rgb(
+                                cell.fg_color.r,
+                                cell.fg_color.g,
+                                cell.fg_color.b,
+                            ),
+                            quantaterm_renderer::RendererColor::rgb(
+                                cell.bg_color.r,
+                                cell.bg_color.g,
+                                cell.bg_color.b,
+                            ),
+                            // Convert cell attributes to renderer attributes
+                            {
+                                let mut renderer_attrs = quantaterm_renderer::RendererCellAttrs::empty();
+                                if cell.attrs.contains(CellAttrs::BOLD) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::BOLD;
+                                }
+                                if cell.attrs.contains(CellAttrs::ITALIC) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::ITALIC;
+                                }
+                                if cell.attrs.contains(CellAttrs::UNDERLINE) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::UNDERLINE;
+                                }
+                                if cell.attrs.contains(CellAttrs::STRIKETHROUGH) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::STRIKETHROUGH;
+                                }
+                                if cell.attrs.contains(CellAttrs::BLINK) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::BLINK;
+                                }
+                                if cell.attrs.contains(CellAttrs::REVERSE) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::REVERSE;
+                                }
+                                if cell.attrs.contains(CellAttrs::HIDDEN) {
+                                    renderer_attrs |= quantaterm_renderer::RendererCellAttrs::HIDDEN;
+                                }
+                                renderer_attrs
+                            },
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+
+        renderer.update_viewport(renderer_viewport);
     }
 
     /// Apply SGR (Select Graphic Rendition) formatting attributes
