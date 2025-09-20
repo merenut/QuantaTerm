@@ -79,7 +79,7 @@ fn setup_logging(verbose: bool, log_level: &str) -> Result<()> {
         .with(
             fmt::layer()
                 .with_target(false)
-                .with_ansi(!std::env::var("NO_COLOR").is_ok()),
+                .with_ansi(std::env::var("NO_COLOR").is_err()),
         )
         .with(env_filter)
         .init();

@@ -225,6 +225,15 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libharfbuzz-dev \
+            pkg-config
+
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
@@ -270,6 +279,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "stable"
+
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libharfbuzz-dev \
+            pkg-config
 
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
