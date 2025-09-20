@@ -5,6 +5,8 @@
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
+pub mod font;
+
 use anyhow::{Context, Result};
 use bitflags::bitflags;
 use std::sync::Arc;
