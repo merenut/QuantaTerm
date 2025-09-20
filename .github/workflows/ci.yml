@@ -21,7 +21,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.80
+          toolchain: stable
 
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
@@ -48,7 +48,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.80
+          toolchain: stable
           components: rustfmt
 
       - name: Check formatting
@@ -64,7 +64,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.80
+          toolchain: stable
           components: clippy
 
       - name: Set up Rust cache
@@ -164,7 +164,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.80
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Install cross
@@ -269,7 +269,7 @@ jobs:
       - name: Install Rust MSRV
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.80"
+          toolchain: "stable"
 
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
