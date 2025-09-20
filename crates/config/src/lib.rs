@@ -47,8 +47,6 @@ pub struct RendererConfig {
     pub font_family: String,
 }
 
-
-
 impl Default for TerminalConfig {
     fn default() -> Self {
         Self {
