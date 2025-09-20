@@ -170,7 +170,7 @@ impl ResultsManager {
         let total_benchmarks = results.len();
         let passed_benchmarks = results.iter().filter(|r| r.passed).count();
 
-        report.push_str(&format!("## Summary\n\n"));
+        report.push_str("## Summary\n\n");
         report.push_str(&format!("- **Total Benchmarks:** {}\n", total_benchmarks));
         report.push_str(&format!("- **Passed:** {}\n", passed_benchmarks));
         report.push_str(&format!(
@@ -249,7 +249,7 @@ impl ResultsManager {
                 }
             ));
 
-            report.push_str("\n");
+            report.push('\n');
         }
 
         report

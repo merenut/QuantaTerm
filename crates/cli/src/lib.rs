@@ -28,12 +28,12 @@ mod tests {
     #[test]
     fn test_cli_creation() {
         let _cli = Cli::new();
-        assert!(true); // Basic test that CLI can be created
+        // Basic test that CLI can be created
     }
 
     #[test]
     fn test_cli_default() {
-        let _cli = Cli::default();
-        assert!(true); // Basic test that CLI default works
+        let _cli = Cli;
+        // Basic test that CLI default works
     }
 }

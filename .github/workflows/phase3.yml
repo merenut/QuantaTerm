@@ -1,0 +1,98 @@
+name: Phase 3 Tests
+
+on: 
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test-plugins:
+    name: Plugin System Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+          
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libharfbuzz-dev \
+            pkg-config
+          
+      - name: Install WASM tools
+        run: |
+          curl https://wasmtime.dev/install.sh -sSf | bash
+          echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+          
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: phase3-${{ runner.os }}
+          
+      - name: Run plugin tests
+        run: |
+          cargo test --workspace --lib
+          cargo test -p quantaterm-plugins-host
+          cargo test -p quantaterm-ai
+          
+      - name: Build example plugins (if they exist)
+        run: |
+          if [ -d "examples/plugins/hello-world" ]; then
+            cd examples/plugins/hello-world
+            cargo build --target wasm32-wasip1 --release
+          else
+            echo "No example plugins found - skipping"
+          fi
+          
+      - name: Test plugin loading (if examples exist)
+        run: |
+          if [ -f "examples/plugins/hello-world/target/wasm32-wasip1/release/hello_world.wasm" ]; then
+            cargo run --bin quantaterm -- --test-plugin examples/plugins/hello-world/target/wasm32-wasip1/release/hello_world.wasm
+          else
+            echo "No plugin binaries found - skipping plugin loading test"
+          fi
+
+  validate-phase3:
+    name: Phase 3 Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+          
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libharfbuzz-dev \
+            pkg-config
+          
+      - name: Install WASM tools
+        run: |
+          curl https://wasmtime.dev/install.sh -sSf | bash
+          echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+          
+      - name: Run Phase 3 validation script
+        run: |
+          chmod +x scripts/validate_phase3.sh
+          ./scripts/validate_phase3.sh
