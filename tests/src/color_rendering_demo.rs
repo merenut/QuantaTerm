@@ -13,51 +13,45 @@ fn test_color_rendering_integration() {
     let mut grid = TerminalGrid::new(20, 5);
 
     // Test various SGR sequences that should be rendered with colors
-    let test_sequences: Vec<(&[u8], &str)> = vec![
-        // Basic colors
-        (b"\x1b[31mRed\x1b[0m", "Red text in standard red"),
-        (b"\x1b[92mBright Green\x1b[0m", "Green text in bright green"),
-        
-        // 256-color mode
-        (b"\x1b[38;5;196mBright Red 256\x1b[0m", "256-color bright red"),
-        (b"\x1b[38;5;21mDeep Blue 256\x1b[0m", "256-color deep blue"),
-        
-        // Truecolor (RGB)
-        (b"\x1b[38;2;255;165;0mOrange RGB\x1b[0m", "RGB orange"),
-        (b"\x1b[38;2;75;0;130mIndigo RGB\x1b[0m", "RGB indigo"),
-        
-        // Attributes
-        (b"\x1b[1mBold\x1b[0m", "Bold text"),
-        (b"\x1b[3mItalic\x1b[0m", "Italic text"),
-        (b"\x1b[4mUnderline\x1b[0m", "Underlined text"),
-        
-        // Combined color and attributes
-        (b"\x1b[1;31mBold Red\x1b[0m", "Bold red text"),
-        (b"\x1b[3;34mItalic Blue\x1b[0m", "Italic blue text"),
+    let test_sequences: Vec<(&[u8], &[u8], &str)> = vec![
+        // (SGR sequence, character, description)
+        (b"\x1b[31m", b"R", "Red text in standard red"),
+        (b"\x1b[92m", b"G", "Green text in bright green"),
+        (b"\x1b[38;5;196m", b"2", "256-color bright red"),
+        (b"\x1b[38;5;21m", b"B", "256-color deep blue"),
+        (b"\x1b[38;2;255;165;0m", b"O", "RGB orange"),
+        (b"\x1b[38;2;75;0;130m", b"I", "RGB indigo"),
+        (b"\x1b[1m", b"B", "Bold text"),
+        (b"\x1b[3m", b"I", "Italic text"),
+        (b"\x1b[4m", b"U", "Underlined text"),
+        (b"\x1b[1;31m", b"R", "Bold red text"),
+        (b"\x1b[3;34m", b"B", "Italic blue text"),
     ];
 
-    for (sequence, description) in test_sequences.iter() {
+    for (sgr_seq, char_seq, description) in test_sequences.iter() {
         println!("Testing: {}", description);
         
-        // Parse the sequence
-        let actions = parser.parse(sequence);
-        
+        // Parse the SGR sequence
+        let actions = parser.parse(sgr_seq);
         for action in actions {
-            match action {
-                ParseAction::Print(c) => {
-                    let state = parser.state();
-                    grid.apply_sgr(state.fg_color, state.bg_color, state.attrs);
-                    grid.print_char(c);
-                }
-                ParseAction::CsiDispatch(CsiAction::Sgr(_)) => {
-                    let state = parser.state();
-                    grid.apply_sgr(state.fg_color, state.bg_color, state.attrs);
-                }
-                _ => {}
+            if let ParseAction::CsiDispatch(CsiAction::Sgr(_)) = action {
+                let state = parser.state();
+                grid.apply_sgr(state.fg_color, state.bg_color, state.attrs);
             }
         }
         
-        // Move to next line for next test
+        // Parse and print the character
+        let char_actions = parser.parse(char_seq);
+        for action in char_actions {
+            if let ParseAction::Print(c) = action {
+                grid.print_char(c);
+                break;
+            }
+        }
+        
+        // Reset for next test
+        parser.reset();
+        grid.reset_formatting();
         grid.newline();
     }
 

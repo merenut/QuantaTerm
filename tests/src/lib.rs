@@ -5,6 +5,7 @@ use quantaterm_core::logging::{ci_config, dev_config, prod_config, LogLevel};
 pub mod sgr_integration;
 pub mod vttest_subset;
 pub mod color_rendering_demo;
+pub mod debug_color_test;
 
 #[test]
 fn test_logging_configurations() {
