@@ -3214,6 +3214,7 @@ dependencies = [
  "quantaterm-blocks",
  "quantaterm-core",
  "quantaterm-pty",
+ "quantaterm-renderer",
  "serde_json",
  "tracing",
  "tracing-subscriber",
