@@ -91,11 +91,11 @@ pub struct GlyphInfo {
 ```
 
 #### Acceptance Criteria
-- [ ] Shape basic ASCII text correctly
-- [ ] Handle Unicode combining characters
-- [ ] Support programming ligatures (if font supports)
-- [ ] Cache shaping results (hit ratio > 85%)
-- [ ] Shaping latency < 1ms for typical line (80 chars)
+- [x] Shape basic ASCII text correctly
+- [x] Handle Unicode combining characters  
+- [x] Support programming ligatures (if font supports)
+- [x] Cache shaping results (hit ratio > 85%)
+- [x] Shaping latency < 1ms for typical line (80 chars)
 
 #### Test Requirements
 ```rust
@@ -145,11 +145,11 @@ pub struct AtlasRegion {
 ```
 
 #### Acceptance Criteria
-- [ ] Atlas size: 2048x2048 initial, expandable
-- [ ] Cache common ASCII set (95 glyphs) on startup
-- [ ] Cache hit ratio ≥ 90% after warm-up (10 seconds typical use)
-- [ ] Atlas upload latency < 2ms per glyph
-- [ ] Memory usage < 32MB for typical glyph set (500 unique glyphs)
+- [x] Atlas size: 2048x2048 initial, expandable
+- [x] Cache common ASCII set (95 glyphs) on startup  
+- [x] Cache hit ratio ≥ 90% after warm-up (10 seconds typical use)
+- [x] Atlas upload latency < 2ms per glyph
+- [x] Memory usage < 32MB for typical glyph set (500 unique glyphs)
 
 #### Test Requirements
 ```rust
