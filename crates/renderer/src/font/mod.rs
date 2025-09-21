@@ -14,7 +14,7 @@ pub mod shaper;
 
 pub use loader::{FontLoader, SystemFontLoader};
 pub use shaper::{GlyphInfo, GlyphShaper};
-// pub use atlas::{GlyphAtlas, AtlasRegion}; // Will be implemented in Task 1.3
+pub use atlas::{GlyphAtlas, AtlasRegion}; // Expose atlas types
 
 /// Font information metadata
 #[derive(Debug, Clone)]

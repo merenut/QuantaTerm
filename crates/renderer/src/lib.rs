@@ -14,6 +14,10 @@ use tracing::{debug, info, instrument, trace, warn};
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{dpi::PhysicalSize, window::Window};
 
+// Import the new font systems
+use crate::font::{FontSystem, GlyphShaper};
+use crate::font::atlas::GlyphAtlas;
+
 /// A color representation for terminal cells (renderer-specific copy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RendererColor {
@@ -60,10 +64,25 @@ bitflags! {
     }
 }
 
-/// A terminal cell for rendering (renderer-specific copy)
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Additional shaping information for a glyph
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapingInfo {
+    /// X advance from shaping
+    pub x_advance: f32,
+    /// Y advance from shaping  
+    pub y_advance: f32,
+    /// X offset from shaping
+    pub x_offset: f32,
+    /// Y offset from shaping
+    pub y_offset: f32,
+    /// Cluster index for text mapping
+    pub cluster: u32,
+}
+
+/// A terminal cell for rendering with enhanced glyph information
+#[derive(Debug, Clone, PartialEq)]
 pub struct RendererCell {
-    /// Unicode glyph identifier
+    /// Unicode glyph identifier (from shaping)
     pub glyph_id: u32,
     /// Foreground color
     pub fg_color: RendererColor,
@@ -71,6 +90,8 @@ pub struct RendererCell {
     pub bg_color: RendererColor,
     /// Formatting attributes
     pub attrs: RendererCellAttrs,
+    /// Optional shaping information for advanced rendering
+    pub shaping_info: Option<ShapingInfo>,
 }
 
 impl RendererCell {
@@ -81,6 +102,7 @@ impl RendererCell {
             fg_color: RendererColor::rgb(255, 255, 255), // White
             bg_color: RendererColor::rgb(0, 0, 0),       // Black
             attrs: RendererCellAttrs::empty(),
+            shaping_info: None,
         }
     }
 
@@ -96,6 +118,24 @@ impl RendererCell {
             fg_color,
             bg_color,
             attrs,
+            shaping_info: None,
+        }
+    }
+
+    /// Create a cell with full shaping information
+    pub fn with_shaping(
+        glyph_id: u32,
+        fg_color: RendererColor,
+        bg_color: RendererColor,
+        attrs: RendererCellAttrs,
+        shaping_info: ShapingInfo,
+    ) -> Self {
+        Self {
+            glyph_id,
+            fg_color,
+            bg_color,
+            attrs,
+            shaping_info: Some(shaping_info),
         }
     }
 }
@@ -115,6 +155,12 @@ pub struct Renderer {
     viewport: Vec<RendererCellRow>,
     /// Current background color (changes when we receive shell output)
     background_color: wgpu::Color,
+    /// Font system for loading and fallback
+    font_system: Option<FontSystem>,
+    /// Glyph shaper for text processing
+    glyph_shaper: Option<GlyphShaper>,
+    /// Glyph atlas for texture management
+    glyph_atlas: Option<GlyphAtlas>,
 }
 
 impl Renderer {
@@ -217,6 +263,9 @@ impl Renderer {
                 b: 0.3,
                 a: 1.0,
             },
+            font_system: None,
+            glyph_shaper: None,
+            glyph_atlas: None,
         })
     }
 
@@ -287,10 +336,134 @@ impl Renderer {
         Ok(())
     }
 
-    /// Add text to the terminal buffer and update display
+    /// Initialize the font systems for advanced text rendering
+    pub fn initialize_font_systems(&mut self) -> Result<()> {
+        info!(subsystem = "renderer", "Initializing font systems");
+        
+        // Initialize font system
+        let mut font_system = FontSystem::new().context("Failed to create font system")?;
+        
+        // Load primary font
+        let primary_font = font_system.load_font("monospace", 14.0)
+            .context("Failed to load primary font")?;
+        
+        // Initialize glyph shaper
+        let glyph_shaper = GlyphShaper::new(primary_font, 14.0)
+            .context("Failed to create glyph shaper")?;
+        
+        // Initialize glyph atlas
+        let glyph_atlas = GlyphAtlas::new(2048, 2048)
+            .context("Failed to create glyph atlas")?;
+        
+        self.font_system = Some(font_system);
+        self.glyph_shaper = Some(glyph_shaper);
+        self.glyph_atlas = Some(glyph_atlas);
+        
+        info!(subsystem = "renderer", "Font systems initialized successfully");
+        Ok(())
+    }
+
+    /// Shape text using the enhanced shaping system
+    pub fn shape_text(&mut self, text: &str) -> Result<Vec<RendererCell>> {
+        if let Some(ref mut shaper) = self.glyph_shaper {
+            let shaped_glyphs = shaper.shape(text);
+            
+            let mut cells = Vec::with_capacity(shaped_glyphs.len());
+            for glyph_info in shaped_glyphs {
+                let shaping_info = ShapingInfo {
+                    x_advance: glyph_info.x_advance,
+                    y_advance: glyph_info.y_advance,
+                    x_offset: glyph_info.x_offset,
+                    y_offset: glyph_info.y_offset,
+                    cluster: glyph_info.cluster,
+                };
+                
+                cells.push(RendererCell::with_shaping(
+                    glyph_info.glyph_id,
+                    RendererColor::rgb(255, 255, 255),
+                    RendererColor::rgb(0, 0, 0),
+                    RendererCellAttrs::empty(),
+                    shaping_info,
+                ));
+            }
+            
+            Ok(cells)
+        } else {
+            // Fallback to character-based rendering
+            Ok(text.chars().map(|c| RendererCell::new(c as u32)).collect())
+        }
+    }
+
+    /// Enhanced text processing with shaping and atlas integration
+    #[instrument(name = "renderer_add_shaped_text", skip(self))]
+    pub fn add_shaped_text(&mut self, text: &str) -> Result<()> {
+        // Initialize font systems if not already done
+        if self.font_system.is_none() {
+            self.initialize_font_systems()?;
+        }
+        
+        // Process text line by line with shaping
+        let new_lines: Result<Vec<_>> = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| self.shape_text(line))
+            .collect();
+        
+        let new_lines = new_lines?;
+        let line_count = new_lines.len();
+        self.viewport.extend(new_lines);
+        
+        debug!(
+            subsystem = "renderer",
+            line_count = line_count,
+            total_viewport_lines = self.viewport.len(),
+            "Added shaped text to renderer viewport"
+        );
+        
+        // Keep only the last 100 lines to prevent memory growth
+        if self.viewport.len() > 100 {
+            let removed_count = self.viewport.len() - 100;
+            self.viewport.drain(0..removed_count);
+            trace!(
+                subsystem = "renderer",
+                removed_lines = removed_count,
+                remaining_lines = self.viewport.len(),
+                "Trimmed viewport to prevent memory growth"
+            );
+        }
+        
+        // Update background color
+        let line_count = self.viewport.len() as f64;
+        self.background_color = wgpu::Color {
+            r: 0.1 + (line_count * 0.01).min(0.2),
+            g: 0.2 + (line_count * 0.005).min(0.1),
+            b: 0.3,
+            a: 1.0,
+        };
+        
+        Ok(())
+    }
+
+    /// Get font system metrics for debugging
+    pub fn get_font_metrics(&self) -> Option<(f32, usize, usize)> {
+        if let (Some(shaper), Some(atlas)) = (&self.glyph_shaper, &self.glyph_atlas) {
+            let shaper_hit_ratio = shaper.cache_hit_ratio();
+            let atlas_metrics = atlas.metrics();
+            Some((shaper_hit_ratio, atlas_metrics.cache_hits, atlas_metrics.cache_misses))
+        } else {
+            None
+        }
+    }
+    /// Add text to the terminal buffer and update display (legacy method)
     #[instrument(name = "renderer_add_text", skip(self))]
     pub fn add_text(&mut self, text: &str) {
-        // Convert plain text to cell data for backward compatibility
+        // Try to use enhanced shaping if available, otherwise fall back to simple method
+        if let Ok(()) = self.add_shaped_text(text) {
+            // Successfully used enhanced shaping
+            return;
+        }
+        
+        // Fallback to original character-based method
         let new_lines: Vec<_> = text
             .lines()
             .filter(|line| !line.trim().is_empty())
@@ -308,7 +481,7 @@ impl Renderer {
             subsystem = "renderer",
             line_count = line_count,
             total_viewport_lines = self.viewport.len(),
-            "Added text to renderer viewport"
+            "Added text to renderer viewport (fallback method)"
         );
 
         // Keep only the last 100 lines to prevent memory growth
@@ -590,5 +763,72 @@ mod tests {
 
         assert_eq!(red_cell.fg_color, RendererColor::rgb(128, 0, 0));
         assert_eq!(green_cell.fg_color, RendererColor::rgb(0, 255, 0));
+    }
+
+    #[test]
+    fn test_enhanced_text_rendering() {
+        // Test the enhanced text rendering integration
+        let text = "Hello → World! 🙂";
+        
+        // Simulate basic cell processing
+        let mut cells = Vec::new();
+        for ch in text.chars() {
+            cells.push(RendererCell::new(ch as u32));
+        }
+        
+        // Verify basic structure
+        assert!(!cells.is_empty());
+        assert_eq!(cells[0].glyph_id, 'H' as u32);
+        assert_eq!(cells[0].shaping_info, None); // No shaping info in basic mode
+        
+        // Test enhanced cell creation with shaping info
+        let shaping_info = ShapingInfo {
+            x_advance: 12.0,
+            y_advance: 0.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
+            cluster: 0,
+        };
+        
+        let enhanced_cell = RendererCell::with_shaping(
+            'A' as u32,
+            RendererColor::rgb(255, 255, 255),
+            RendererColor::rgb(0, 0, 0),
+            RendererCellAttrs::empty(),
+            shaping_info.clone(),
+        );
+        
+        assert_eq!(enhanced_cell.glyph_id, 'A' as u32);
+        assert_eq!(enhanced_cell.shaping_info, Some(shaping_info));
+    }
+
+    #[test]
+    fn test_shaping_info_equality() {
+        let info1 = ShapingInfo {
+            x_advance: 10.0,
+            y_advance: 0.0,
+            x_offset: 1.0,
+            y_offset: 0.0,
+            cluster: 0,
+        };
+        
+        let info2 = ShapingInfo {
+            x_advance: 10.0,
+            y_advance: 0.0,
+            x_offset: 1.0,
+            y_offset: 0.0,
+            cluster: 0,
+        };
+        
+        let info3 = ShapingInfo {
+            x_advance: 11.0, // Different advance
+            y_advance: 0.0,
+            x_offset: 1.0,
+            y_offset: 0.0,
+            cluster: 0,
+        };
+        
+        assert_eq!(info1, info2);
+        assert_ne!(info1, info3);
     }
 }
