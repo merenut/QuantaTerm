@@ -179,6 +179,11 @@ impl QuantaTermApp {
                             if let Some(ref mut renderer) = self.renderer {
                                 renderer.add_text(&text);
                             }
+                            
+                            // Request redraw to show the new text
+                            if let Some(ref window) = self.window {
+                                window.request_redraw();
+                            }
                         } else {
                             debug!("Shell output (binary): {} bytes", data.len());
                         }
@@ -195,6 +200,11 @@ impl QuantaTermApp {
                         if let Some(ref mut renderer) = self.renderer {
                             renderer.add_text(&format!("Shell exited with code: {}", code));
                         }
+                        
+                        // Request redraw to show the exit message
+                        if let Some(ref window) = self.window {
+                            window.request_redraw();
+                        }
                     }
                     PtyEvent::Error(error) => {
                         error!("PTY error: {}", error);
@@ -202,6 +212,11 @@ impl QuantaTermApp {
                         // Add error message to display
                         if let Some(ref mut renderer) = self.renderer {
                             renderer.add_text(&format!("PTY Error: {}", error));
+                        }
+                        
+                        // Request redraw to show the error message
+                        if let Some(ref window) = self.window {
+                            window.request_redraw();
                         }
                     }
                 }
@@ -217,6 +232,11 @@ impl ApplicationHandler for QuantaTermApp {
             if let Err(e) = pollster::block_on(self.create_window(event_loop)) {
                 warn!("Failed to create window: {}", e);
                 event_loop.exit();
+            } else {
+                // Request initial redraw to show welcome messages
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
             }
         }
     }

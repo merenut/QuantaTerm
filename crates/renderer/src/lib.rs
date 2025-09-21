@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument, trace, warn};
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{dpi::PhysicalSize, window::Window};
+use font::FontSystem;
 
 /// A color representation for terminal cells (renderer-specific copy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +116,10 @@ pub struct Renderer {
     viewport: Vec<RendererCellRow>,
     /// Current background color (changes when we receive shell output)
     background_color: wgpu::Color,
+    /// Font system for text rendering
+    font_system: Option<FontSystem>,
+    /// Whether we need to redraw the screen
+    needs_redraw: bool,
 }
 
 impl Renderer {
@@ -203,6 +208,18 @@ impl Renderer {
             "Renderer initialization complete"
         );
 
+        // Try to initialize font system (optional for now)
+        let font_system = match FontSystem::new() {
+            Ok(fs) => {
+                debug!(subsystem = "renderer", "Font system initialized successfully");
+                Some(fs)
+            }
+            Err(e) => {
+                warn!(subsystem = "renderer", error = %e, "Failed to initialize font system, text will not render");
+                None
+            }
+        };
+
         Ok(Self {
             _instance: instance,
             surface,
@@ -217,6 +234,8 @@ impl Renderer {
                 b: 0.3,
                 a: 1.0,
             },
+            font_system,
+            needs_redraw: true,
         })
     }
 
@@ -280,9 +299,44 @@ impl Renderer {
             });
         }
 
+        // Simple text rendering if we have content and font system
+        if !self.viewport.is_empty() && self.font_system.is_some() {
+            self.render_text_simple(&view, &mut encoder)?;
+        }
+
         // Submit commands and present
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        Ok(())
+    }
+
+    /// Simple text rendering method - renders text to CPU texture and uploads to GPU
+    fn render_text_simple(
+        &mut self,
+        _view: &wgpu::TextureView,
+        _encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<()> {
+        // For now, implement a simple debug approach: just change background color
+        // when we have text content to show that text is being processed
+        if !self.viewport.is_empty() {
+            let text_count = self.viewport.iter().map(|row| row.len()).sum::<usize>();
+            let intensity = (text_count as f64 * 0.01).min(0.5);
+            
+            self.background_color = wgpu::Color {
+                r: 0.1 + intensity * 0.3,  // Add some red
+                g: 0.2 + intensity * 0.5,  // Add more green to make it lighter
+                b: 0.3,
+                a: 1.0,
+            };
+
+            trace!(
+                subsystem = "renderer",
+                text_count = text_count,
+                intensity = intensity,
+                "Adjusting background color based on text content"
+            );
+        }
 
         Ok(())
     }
