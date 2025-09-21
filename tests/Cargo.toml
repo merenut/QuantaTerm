@@ -11,6 +11,7 @@ repository.workspace = true
 quantaterm-core = { path = "../crates/core" }
 quantaterm-pty = { path = "../crates/pty" }
 quantaterm-blocks = { path = "../crates/blocks" }
+quantaterm-renderer = { path = "../crates/renderer" }
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

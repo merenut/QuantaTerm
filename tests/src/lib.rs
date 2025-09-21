@@ -7,6 +7,9 @@
 // pub mod sgr_integration;
 // pub mod vttest_subset;
 
+// Test for renderer visual feedback
+pub mod renderer_visual_feedback_test;
+
 //#[test]
 //fn test_logging_configurations() {
 //    // Test different configurations compile and have expected properties
