@@ -46,6 +46,22 @@ pollster = "0.3"
 # Clipboard support
 arboard = "3.2"
 
+# WASM runtime dependencies
+wasmtime = "27.0"
+wasmtime-wasi = "27.0"
+
+# HTTP client for AI providers
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+# Regex for secret detection
+regex = "1.10"
+
+# File watching for hot reload
+notify = "6.1"
+
+# Rate limiting
+governor = "0.6"
+
 [profile.dev]
 opt-level = 0
 debug = true
