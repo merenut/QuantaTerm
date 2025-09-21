@@ -104,6 +104,22 @@ impl GlyphShaper {
         self.font_system = Some(Box::new(fallback_fn));
     }
 
+    /// Set fallback using FontSystem reference
+    pub fn set_font_system_fallback(&mut self, font_system: std::sync::Arc<std::sync::Mutex<crate::font::FontSystem>>) {
+        let font_size = self.font_size;
+        self.font_system = Some(Box::new(move |text: &str| {
+            if let Ok(mut fs) = font_system.lock() {
+                // Try to find a font for the first character that needs fallback
+                if let Some(ch) = text.chars().next() {
+                    if let Ok(font) = fs.find_font_for_codepoint(ch as u32, font_size) {
+                        return Some(font);
+                    }
+                }
+            }
+            None
+        }));
+    }
+
     /// Shape text into a sequence of positioned glyphs with Unicode support
     pub fn shape(&mut self, text: &str) -> Vec<GlyphInfo> {
         self.shape_with_features(text, &[])

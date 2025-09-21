@@ -154,6 +154,7 @@ impl GlyphAtlas {
     }
 
     /// Get or rasterize a glyph and return its atlas region
+    /// Uses a more robust font ID system to ensure consistency
     pub fn get_or_rasterize(&mut self, font: &FontArc, glyph_id: u32, size: f32) -> Result<AtlasRegion> {
         let glyph_key = GlyphKey::new(font, glyph_id, size);
         
@@ -171,12 +172,22 @@ impl GlyphAtlas {
         // Cache the result
         if let Some((evicted_key, _)) = self.glyph_cache.push(glyph_key.clone(), region.clone()) {
             self.metrics.evictions += 1;
-            // Remove evicted glyph from occupied regions
-            self.remove_from_occupied(&evicted_key);
+            // In a full implementation, we'd mark the evicted region as free
+            // For now, we'll leave the data in place and let it be overwritten
+            self.handle_evicted_glyph(&evicted_key);
         }
         
         self.update_metrics();
         Ok(region)
+    }
+
+    /// Handle an evicted glyph (placeholder for more sophisticated management)
+    fn handle_evicted_glyph(&mut self, _evicted_key: &GlyphKey) {
+        // In a production implementation, this would:
+        // 1. Mark the atlas region as free for reuse
+        // 2. Update the packing algorithm to consider freed space
+        // 3. Optionally defragment the atlas
+        // For now, we'll keep it simple and let regions be overwritten
     }
 
     /// Rasterize a glyph and pack it into the atlas
@@ -313,10 +324,10 @@ impl GlyphAtlas {
         Ok(())
     }
 
-    /// Remove an evicted glyph from occupied regions
+    /// Remove an evicted glyph from occupied regions (legacy method)
     fn remove_from_occupied(&mut self, _evicted_key: &GlyphKey) {
-        // In a full implementation, we'd track which regions belong to which glyphs
-        // For now, we'll keep it simple and let the regions be overwritten
+        // Legacy method for compatibility
+        self.handle_evicted_glyph(_evicted_key);
     }
 
     /// Update performance metrics
