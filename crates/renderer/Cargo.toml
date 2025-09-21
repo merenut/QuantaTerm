@@ -18,6 +18,12 @@ bitflags = "2.4"
 
 # Font handling
 ab_glyph = "0.2"
+unicode-normalization = "0.1"
+unicode-script = "0.5"
+
+# Atlas and packing
+rectangle-pack = "0.4"
+lru = "0.12"
 
 # Platform-specific font loading
 [target.'cfg(target_os = "linux")'.dependencies]
